@@ -1,0 +1,48 @@
+* {
+    box-sizing: border-box;
+}
+
+h1,h2,h3,h4,h5,h6,p {
+    padding: 0;
+    margin: 0;
+}
+
+.main-container {
+    padding: 25px;
+}
+
+.breadcrum {
+    display: flex;
+    gap: 15px;
+}
+
+.breadcrum p, .breadcrum i {
+    text-transform: capitalize;
+    color: #007BB0;
+}
+
+.page-title-container {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 20px;
+}
+
+.page-title h2 {
+    text-transform: capitalize;
+    color: #007BB0;
+    font-size: 1.5rem;
+}
+
+.export-section button {
+    padding: 10px 25px;
+    border-radius: 6px;
+    border: none;
+    color: #ececec;
+    background-color: #323232;
+    font-size: 0.8rem;
+    text-transform: capitalize;
+}
+
+.export-section button:hover {
+    background-color: #007BB0;
+}

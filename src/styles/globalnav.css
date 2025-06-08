@@ -1,0 +1,73 @@
+.global-nav-container {
+    background-color: #dedede;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding-top: 10px;
+}
+
+.logo-container {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.hamburger-menu {
+    font-size: 1.4rem;
+    margin-left: 20px;
+    width: 30px;
+    height: 30px;
+}
+
+.hamburger-menu.hidden {
+    display: none;
+}
+
+.applogo {
+    font-size: 1.4rem;
+    margin-right: 5px;
+    width: 30px;
+    height: 30px;
+}
+
+.hamburger-menu, .applogo {
+    border-radius: 6px;
+    border: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 5px;
+}
+
+.hamburger-menu:hover {
+    background-color: #262626;
+    color: #dedede;
+}
+
+.logo-text {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #262626;
+    text-transform: uppercase;
+}
+
+.user-login-container {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    align-items: center;
+    margin-right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 30px;
+}
+
+.user-login-container:hover {
+    background-color: #bcbcbc;
+    transition: all 0.3s ease-in-out;
+}
+
+.fa-circle-user {
+    font-size: 2.5rem;
+    color: #262626;
+}

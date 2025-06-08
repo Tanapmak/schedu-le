@@ -1,0 +1,26 @@
+.layout-container {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.main-content {
+    background-color: #484848;
+    width: 100vw;
+    height: 100vh;
+    flex: 1;
+    transition: 0.3s ease;
+}
+
+.user-area {
+    background-color: #dedede;
+    height: 100vh;
+    overflow: scroll;
+}
+
+.testcontent {
+    width: 500px;
+    height: 100px;
+}
+
