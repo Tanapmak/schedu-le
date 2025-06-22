@@ -1,0 +1,75 @@
+.event-modal {
+    background-color: #fcfcfc;
+    padding: 20px;
+    width: 15vw;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    text-transform: capitalize;
+}
+
+.event-details {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.headers {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-close-btn {
+    cursor: pointer;
+}
+
+.modal-close-btn:hover {
+    color: #1b95b6;
+}
+
+.modal-close-btn i {
+    color: inherit;
+}
+
+.modal-btn-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    gap: 10px;
+}
+
+.modal-btn {
+    width: 100%;
+    padding: 5px;
+    text-transform: capitalize;
+    border: none;
+    border-radius: 6px;
+}
+
+.edit-btn {
+    background-color: #ffe77a;
+    color: #826800;
+}
+
+.edit-btn:hover {
+    background-color: #ffd664;
+}
+
+.delete-btn {
+    background-color: #ff868a;
+    color: #2a2a2a;
+}
+
+.delete-btn:hover {
+    background-color: #ff6166;
+}
+
+.cancel-btn {
+    background-color: #545454;
+    color: #efefef;
+}
+
+.cancel-btn:hover {
+    background-color: #777777;
+}

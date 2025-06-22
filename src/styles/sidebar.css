@@ -11,48 +11,41 @@
 .sidebar-container.open {
     background-color: #484848;
     color: #dadada;
-    width: 300px;
+    width: 250px;
     padding: 12px;
     display: flex;
-    flex-direction: column;
-    padding: 10px;
+    flex-direction: column;  
+    transition: width 0.2s ease-out;   
 }
 
 .sidebar-logo-container {
     display: flex;
     justify-content: space-between;
-    padding-top: 4px;
     padding-bottom: 16px;
 }
 
-.sidebar-hamburger-menu {
-    margin-left: 5px;
-}
-
-.sidebar-close {
-    margin-right: 5px;
-}
-
 .sidebar-hamburger-menu, .sidebar-close {
-    font-size: 1.3rem;
-    padding: 5px;
+    font-size: 1rem;
+    padding: 2px;
     width: 30px;
     height: 30px;
-    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     border-radius: 6px;
 }
 
-.sidebar-hamburger-menu:hover, .sidebar-close:hover {
+.sidebar-close:hover {
     background-color: #252525;
     
 }
 
 .sidebar-item-container, .sidebar-main-item-container {
-    padding: 10px 12px;
+    padding: 10px 10px;
     margin-top: 10px;
     display: flex;
     gap: 10px;
-    width: 90%;
+    width: 100%;
     border-radius: 6px;
     border: none;
     text-transform: capitalize;
@@ -73,13 +66,14 @@
 }
 
 .sidebar-item-container i {
-    font-size: 1.2rem;
+    font-size: 1rem;
     color: inherit;
 }
 
 .sidebar-item-link {
     text-decoration: none;
     color: inherit;
+    font-size: 0.8rem;
 }
 
 .sidebar-sub-item-container i{

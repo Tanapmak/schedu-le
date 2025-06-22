@@ -1,0 +1,174 @@
+.admin-calendar-container {
+    display: flex;
+    height: 83vh;
+    width: 100%;
+    padding-top: 20px;
+    gap: 5px;
+}
+
+.rbc-event {
+  font-size: 0.2rem;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+/* add/edit session form */
+
+.session-form-container {
+    width: 0;
+    visibility: hidden;
+    height: 83vh;
+    background-color: #f7f7f7;
+    font-size: 1rem;
+    transition: width 0.3s ease-in-out;
+}
+
+.session-form-container.open {
+    width: 22vw;
+    visibility: visible;
+    max-width: 320px;
+    height: 83vh;
+    background-color: #f7f7f7;
+    font-size: 1rem;
+    border-radius: 10px;
+    border: none;
+    padding: 20px;
+} 
+
+.header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.close-btn {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  color: #007BB0;
+}
+
+.close-btn i {
+  color: inherit;
+  font-size: 1.1rem;
+}
+
+.headeer-section-text {
+    text-transform: capitalize;
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+input {
+  padding: 10px;
+  width: 165%;
+  border: solid #d0d0d0 0.3px;
+  border-radius: 6px;
+}
+
+select {
+  padding: 10px;
+  border: solid #d0d0d0 0.2px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+}
+
+select,
+::picker(select) {
+  appearance: base-select;
+}
+
+select:hover {
+  background-color: #f2f2f2;
+}
+
+select::picker-icon {
+  color: #2f2f2f;
+  transition: 0.4s rotate;
+}
+
+select:open::picker-icon {
+  rotate: 180deg;
+}
+
+::picker(select) {
+  border: solid #d0d0d0 0.3px;
+  border-radius: 6px;
+  padding: 10px;
+  color: #007BB0;
+}
+
+label {
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.btn-group {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.btn-group button{
+  padding: 6px;
+  width: 100%;
+  text-transform: capitalize;
+  border: none;
+  border-radius: 6px;
+}
+
+.primary-btn {
+  background-color: #007BB0;
+  color: #f7f7f7;
+}
+
+.primary-btn:hover {
+  background-color: #2298cb;
+}
+
+.secondary-btn {
+  background-color: #2f2f2f;
+  color: #f7f7f7;
+}
+
+.secondary-btn:hover {
+  background-color: #626262;
+}
+
+.session-picker {
+  background-color: #007BB0;
+}
+
+.session-validation-container h5{
+  color: #ff3838;
+}
+
+.session-validation-container ul {
+  font-size: 0.7rem;
+  padding-inline-start: 0;
+  padding-inline: 10px;
+}
+
+.session-validation-container li {
+  margin-top: 10px;
+  color: #ff5d5d;
+}
+
+.option-remaining {
+  color: #313131;
+}
+

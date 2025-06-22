@@ -1,0 +1,115 @@
+* {
+    box-sizing: border-box;
+}
+
+h1,h2,h3,h4,h5,h6,p {
+    padding: 0;
+    margin: 0;
+}
+
+.main-container {
+    padding: 10px 25px;
+}
+
+.section-container, .section-sub-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.title-container h1 {
+    text-transform: capitalize;
+    color: #007BB0;
+    font-size: 1.5rem;
+    font-weight: 650;
+}
+
+.label-container {
+    margin-top: 15px;
+}
+
+.label {
+    text-transform: capitalize;
+    font-weight: 600;
+    color: #474747;
+}
+
+.livehour-container {
+    display: grid;
+    grid-template-columns: 2fr 10fr 1fr;
+    grid-template-rows: 1fr;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.total-hour-container, .individual-hour-container, .action-btn {
+    padding: 10px;
+}
+
+.total-hour-container {
+    background-color: #ececec;
+}
+
+.individual-hour-container {
+    display: flex;
+    gap: 10px;
+    background-color: #ececec;
+    overflow: scroll;
+}
+
+.action-btn {
+    background-color: #ececec;
+}
+
+.total-hour-container .room-name {
+    font-weight: 600;
+}
+
+.room-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.hour-container {
+    display: flex;
+    gap: 5px;
+    align-items: flex-end;
+}
+
+.hour-card {
+    padding: 10px;
+    background-color: #e4e4e4;
+    border-radius: 6px;
+    border: none;
+    width: 200px;
+}
+
+.total-hour-container .hour-card {
+    background-color: transparent;
+}
+
+.hour-amount {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #0191cf;
+    margin-block-end: 0;
+}
+
+.hour-text {
+    text-transform: uppercase;
+    padding-bottom: 3.5px;
+}
+
+.action-btn {
+    display: flex;
+    flex-direction: column;
+    background-color: #474747;
+    color: #ececec;
+    justify-content: center;
+    align-items: center;
+    text-transform: capitalize;
+    gap: 5px;
+}
+
+.action-btn:hover {
+    background-color: #0191cf;
+}
