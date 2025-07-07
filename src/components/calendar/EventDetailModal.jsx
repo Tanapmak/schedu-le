@@ -1,7 +1,7 @@
 import React from "react";
-import "../styles/event-detail-modal.css"
+import "../../styles/event-detail-modal.css"
 
-const EventDetailModal = ({event, onClose, onEdit, onDelete}) => {
+const EventDetailModal = ({isClickSummaryCard, event, onClose, onEdit, onDelete}) => {
     if(!event) return null;
 
     return (
@@ -10,9 +10,12 @@ const EventDetailModal = ({event, onClose, onEdit, onDelete}) => {
                 <div className="event-details">
                     <div className="headers">
                         <h3>{event.title}</h3>
-                        <div className="modal-close-btn" onClick={onClose}>
-                            <i className="fa-solid fa-xmark"></i>
-                        </div>
+                        {isClickSummaryCard ? null :
+                            <div className="modal-close-btn" onClick={onClose}>
+                                <i className="fa-solid fa-xmark"></i>
+                            </div>                    
+                        }
+
                     </div>
                     <p>{event.mc} / {event.pd}</p>
                     <p>date: {event.start.toLocaleDateString("en-GB")}</p>
@@ -23,8 +26,8 @@ const EventDetailModal = ({event, onClose, onEdit, onDelete}) => {
                     </p>
                 </div>
                 <div className="modal-btn-group">
-                    <button className="edit-btn modal-btn" onClick={onEdit}>edit</button>
-                    <button className="delete-btn modal-btn" onClick={onDelete}>delete</button>
+                    <button className="edit-btn modal-btn" onClick={()=>onEdit(event)}>edit</button>
+                    <button className="delete-btn modal-btn" onClick={()=>onDelete(event)}>delete</button>
                 </div>
                 
             </div>

@@ -1,5 +1,5 @@
 import React, {useState} from "react";
-import '../styles/sidebar.css'
+import '../../styles/sidebar.css'
 
 const Sidebar = (props) => {
 
@@ -39,9 +39,17 @@ const Sidebar = (props) => {
                     <i className="fa-solid fa-clock"></i>
                     <a href="#" className="sidebar-item-link">livestream schedule</a>
                 </div>
+                <div className="sidebar-item-container" onClick={() => {props.onPageChange("MyLeave")}}>
+                    <i class="fa-solid fa-person-walking-arrow-right"></i>
+                    <a href="#" className="sidebar-item-link">my day off</a>
+                </div>
                 <div className="sidebar-item-container" onClick={() => {props.onPageChange("ManageSchedule")}}>
                     <i className="fa-solid fa-list-check"></i>
                     <a href="#" className="sidebar-item-link">manage schedule</a>
+                </div>
+                <div className="sidebar-item-container" onClick={() => {props.onPageChange("ManageLeave")}}>
+                    <i className="fa-solid fa-list-check"></i>
+                    <a href="#" className="sidebar-item-link">manage leave</a>
                 </div>
                 <div className="sidebar-item-container" onClick={() => {props.onPageChange("ManageMCPD")}}>
                     <i className="fa-solid fa-people-roof"></i>

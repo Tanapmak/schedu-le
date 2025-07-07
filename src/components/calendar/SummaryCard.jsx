@@ -6,6 +6,7 @@ const roomColors = {
   lazada: "#4979D2",
   shopee: "#DD6E00",
   "content room": "#A149FF",
+  "day off": "#ED3419",
 }
 
 const SummaryCard = ({ value, events }) => {
@@ -18,6 +19,7 @@ const SummaryCard = ({ value, events }) => {
   const summary = {};
   eventsForDay.forEach(event => {
     const room = event.title?.toLowerCase() || "Unknown";
+    const type = event.type?.toLowerCase() || "Unknown";
     const duration = (event.end - event.start) / (1000 * 60 * 60); 
 
     summary[room] = (summary[room] || 0) + duration;
@@ -39,7 +41,7 @@ const SummaryCard = ({ value, events }) => {
             whiteSpace: "nowrap",
             overflow: "hidden",
           }}>
-          <strong>{room}</strong>: {hours.toFixed(0)} hrs
+          <strong>{room}{type}</strong>: {hours.toFixed(0)} hrs
         </div>
       ))}
     </div>

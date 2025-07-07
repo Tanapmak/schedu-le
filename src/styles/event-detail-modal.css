@@ -1,10 +1,12 @@
 .event-modal {
-    background-color: #fcfcfc;
+    background-color: #ffffff;
     padding: 20px;
     width: 15vw;
     border-radius: 6px;
     font-size: 0.8rem;
     text-transform: capitalize;
+    box-shadow: 2px 2px 3px #eeeeee;
+    border: solid 0.2px #eeeeee;
 }
 
 .event-details {

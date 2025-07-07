@@ -1,0 +1,72 @@
+.dayoff-table {
+    width: 100%;
+    font-size: 0.8rem;
+    text-align: left;
+    padding-left: 100px;
+    border-collapse: collapse;
+    background-color: #f3f3f3;
+}
+
+.table-main-container {
+    height: 83vh;
+    background-color: #f3f3f3;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+th, td {
+    padding: 12px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+  text-transform: capitalize;
+  padding-left: 60px;
+}
+
+th {
+    background-color: #c7c7c7;
+}
+
+.dayoff-btn-group {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    width: 60px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 6px;
+    text-transform: capitalize;
+}
+
+.dayoff-edit-btn {
+    background-color: #ffe95a;
+    color: #353535;
+}
+
+.dayoff-edit-btn:hover {
+    background-color: #ffdd03;
+}
+
+.dayoff-delete-btn {
+    background-color: #ff9b9b;
+    color: #353535;
+}
+
+.dayoff-delete-btn:hover {
+    background-color: #ff7474;
+}
+
+.request-dayoff-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    background-color: #0077b8;
+    color: #f3f3f3;
+    text-transform: capitalize;
+    margin-bottom: 15px;
+}
+
+.request-dayoff-btn:hover {
+    background-color: #363636;
+}

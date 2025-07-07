@@ -1,12 +1,12 @@
 import React from "react";
-import Globalnav from "./GlobalNav";
-import Sidebar from "./Sidebar";
-import ManageSchedule from "./ManageSchedule";
-import LiveSchedule from "./LiveSchedule";
-import Home from "./Home"
-import AdminCalendar from "./AdminCalendar";
+import Globalnav from "../../components/layout/Globalnav.jsx";
+import Sidebar from "../../components/layout/Sidebar.jsx";
+import ManageSchedule from "../../pages/ManageSchedule.jsx";
+import LiveSchedule from "../../pages/LiveSchedule";
+import MyDayOff from "../leave/MyDayOff.jsx";
+import Home from "../../pages/Home"
 import { useState } from "react";
-import '../styles/layout.css'
+import '../../styles/layout.css'
 
 const Layout = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -27,8 +27,9 @@ const Layout = () => {
             case "LiveSchedule":
                 return <LiveSchedule />;
             case "ManageSchedule":
-                return <ManageSchedule />;   
-        
+                return <ManageSchedule />;  
+            case "MyLeave":
+                return <MyDayOff />;        
             default:
                 return <Home />;
         }

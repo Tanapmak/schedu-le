@@ -1,10 +1,26 @@
 import React from "react";
 import { useEffect, useState } from "react";
-import "../styles/admin-calendar.css"
-import SessionPicker from "./SessionPicker"
+import "../../styles/admin-calendar.css"
+import SessionPicker from "../common-UI/SessionPicker"
 
-const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, startSession, endSession, onClose, onSave, isOpen, isEditMode }) => {
-
+const AddSessionForm = ({ 
+    isOpen, 
+    events,
+    existingEvent, 
+    selectRoom, 
+    startSession, 
+    endSession, 
+    mcName, 
+    pdName, 
+    isEditMode,
+    validateSession,
+    onClose, 
+    onSave,  
+    dayType,   
+    isClickDayOff, 
+    isHolidayDate,
+}) => {
+    
     const [formData, setFormData] = useState({
         room: "",
         mc: "",
@@ -13,113 +29,80 @@ const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, sta
         endDate: null,
         startTime: null,
         endTime: null,
+        typeOfDay: null,
     })
 
-    const [validationErrors, setVariationErrors] = useState([]);
+    const [validationErrors, setValidationErrors] = useState([]);
 
     useEffect(() => {
-    if (existingEvent) {
-      setFormData(
-        {
-            id: existingEvent.id || null,
-            room: existingEvent.title || null,
-            mc: existingEvent.mc || null,
-            pd: existingEvent.pd || null,
-            startTime: existingEvent.start || null,
-            endTime: existingEvent.end || null,
+        if (existingEvent) {
+            setFormData(
+                {
+                    id: existingEvent.id || null,
+                    room: existingEvent.title || null,
+                    mc: existingEvent.mc || null,
+                    pd: existingEvent.pd || null,
+                    startTime: existingEvent.start || null,
+                    endTime: existingEvent.end || null,
+                    typeOfDay: existingEvent.type || null,
+                }
+            );
+        } else {
+            setFormData(
+                {
+                    room: selectRoom || "",
+                    mc: mcName || "",
+                    pd: pdName || "",
+                    startTime: startSession || null,
+                    endTime: endSession || null,
+                    typeOfDay: dayType || null,
+                }
+            );
         }
-        );
-    } else {
-        setFormData(
-            {
-                room: selectRoom || "",
-                mc: mcName || "",
-                pd: pdName || "",
-                startTime: startSession || null,
-                endTime: endSession || null,
-            }
-        );
-    }
-  }, [existingEvent, startSession, endSession, selectRoom, mcName, pdName]);
+    }, [existingEvent, startSession, endSession, selectRoom, mcName, pdName, dayType]);
 
     const getWorkForceHours = (start, end) => (new Date(end) - new Date(start)) / (1000 * 60 * 60)
 
-    const validateSession = (newEvent) => {
-        const errors = [];
-
-        const newStart = new Date(newEvent.start);
-        const newEnd = new Date(newEvent.end);
-
-        //check overlap session
-        const overlapping = events.filter((ev) => 
-        ev.id !== newEvent.id &&
-        newStart < new Date(ev.end) &&
-        newEnd > new Date(ev.start)
-        );
-
-        overlapping.forEach(ev => {
-            if (ev.title === newEvent.title) {
-                errors.push(`Room conflict with ${ev.start.toLocaleDateString("en-GB")}, cannot assign new session to ${ev.title}`)
-            }
-
-            if(ev.mc === newEvent.mc) {
-                errors.push(`MC duplication on ${ev.start.toLocaleDateString("en-GB")}, cannot assign new session to ${ev.mc}`)
-            }
-
-            if(ev.pd === newEvent.pd) {
-                errors.push(`PD duplication on ${ev.start.toLocaleDateString("en-GB")}, cannot assign new session to ${ev.pd}`)
-            }
-        })
-
-        //check total hours
-        const mcTotal = events
-        .filter(ev => ev.mc === newEvent.mc && ev.id !== newEvent.id)
-        .reduce((sum, ev) => sum + getWorkForceHours(ev.start, ev.end),0) + getWorkForceHours(newStart, newEnd);
-
-        const pdTotal = events
-        .filter(ev => ev.pd === newEvent.pd && ev.id !== newEvent.id)
-        .reduce((sum, ev) => sum + getWorkForceHours(ev.start, ev.end),0) + getWorkForceHours(newStart, newEnd);
-
-        if(mcTotal > 124) errors.push(`${newEvent.mc} already exceed max hours (124 HRS), exceed amount: ${mcTotal.toFixed(1)} HRS`)
-        // else if(mcTotal < 96) errors.push(`${newEvent.mc} still need ${mcTotal.toFixed(1)} HRS to acheive min KPI (96 HRS)`)
-
-        if(pdTotal > 176) errors.push(`${newEvent.pd} already exceed max hours (176 HRS), exceed amount: ${pdTotal.toFixed(1)} HRS`)
-        // else if(pdTotal < 132) errors.push(`${newEvent.pd} still need ${pdTotal.toFixed(1)} HRS to acheive min KPI (132 HRS)`)
-
-        return errors
-    }
-
     const calculatePersonHours = (name, description) => {
-    if (!name) return 0;
-
-    const filtered = events.filter(ev => ev[description] === name && ev.id !== formData.id);
+        if (!name) return 0;
+        const filtered = events.filter(ev => ev[description] === name && ev.id !== formData.id && ev.title?.toLowerCase() !== "content room");
         return filtered.reduce((total, ev) => total + getWorkForceHours(ev.start, ev.end), 0);
     };
 
     const calculateRoomHours = (room) => {
         if(!room) return 0;
-
+        if(room === "day off" || room === "content room") return 0;
         const totalHours = events.reduce((total, ev) => total + getWorkForceHours(ev.start, ev.end),0)
         return totalHours
     }
 
     const mcList = ["Newyear", "Petch", "Ponz", "Chani", "Nooknick", "Aomkuan"];
     const pdList = ["Zone", "Tongvha", "Non", "Fourarm"];
-    const roomList = ["TikTok 1", "TikTok 2", "Lazada", "Shopee", "Content Room"];
+    const roomList = ["TikTok 1", "TikTok 2", "Lazada", "Shopee"];
+    const dayList = ["Working day", "Day off"];
 
     const renderMCOptions = mcList.map((name) => {
-    const used = calculatePersonHours(name, "mc");
-    const remaining = 124 - used;
-        return (
+        const used = calculatePersonHours(name, "mc");
+        const remaining = 124 - used;
+        if(name === "All PD") {
+            return (
+            <option key={name} value={name}>
+            {name}
+            </option>
+        );
+        } else {
+            return (
             <option key={name} value={name}>
             {`${name} ( Used: ${used.toFixed(0)} hours / Remaining: ${remaining.toFixed(0)} hours )`}
             </option>
         );
+        }
+        
     });
 
     const renderPDOptions = pdList.map((name) => {
-    const used = calculatePersonHours(name, "pd");
-    const remaining = 176 - used;
+        const used = calculatePersonHours(name, "pd");
+        const remaining = 176 - used;
         return (
             <option key={name} value={name}>
             {`${name} ( Used: ${used.toFixed(0)} hours / Remaining: ${remaining.toFixed(0)} hours )`}
@@ -128,11 +111,19 @@ const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, sta
     });
 
     const renderRoomOptions = roomList.map((room) => {
-    const roomHours = calculatePersonHours(room, "title");
-    const totalRoomHours = calculateRoomHours(room);
+        const roomHours = calculatePersonHours(room, "title");
+        const totalRoomHours = calculateRoomHours(room);
         return (
             <option key={room} value={room}>
             {`${room} (Assigned ${roomHours.toFixed(0)} hours of ${totalRoomHours.toFixed(0)} / 704 total hours)`}
+            </option>
+        );
+    });
+
+    const renderDayOptions = dayList.map((day) => {
+        return (
+            <option key={day} value={day}>
+            {day}
             </option>
         );
     });
@@ -148,16 +139,17 @@ const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, sta
             pd: formData.pd,
             start: formData.startTime,
             end: formData.endTime,
+            type: formData.typeOfDay,
         };
 
         const errors = validateSession(newEvent);
 
         if(errors.length > 0) {
-            setVariationErrors(errors);
+            setValidationErrors(errors);
             return;
         }
 
-        setVariationErrors([]);
+        setValidationErrors([]);
         onSave(newEvent);
         onClose();
     };
@@ -175,7 +167,15 @@ const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, sta
                 <label htmlFor="startDateTime">
                     session information
                 </label>
-                    
+                    <select name="dayType" id="dayType" value={formData.typeOfDay} onChange={(event) => setFormData({
+                        ...formData, typeOfDay: event.target.value
+                    })}>
+                        <button>
+                        <selectedcontent></selectedcontent>
+                        </button>
+                        <option value="">Select Day Type</option>
+                        {renderDayOptions}
+                    </select>
                     <select name="room" id="room" value={formData.room} onChange={(event) => setFormData({
                         ...formData, room: event.target.value
                     })}>
@@ -183,37 +183,44 @@ const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, sta
                         <selectedcontent></selectedcontent>
                         </button>
                         <option value="">Select Room</option>
+                        <option value="Day off">Day off</option>
                         {renderRoomOptions}
+                        <option value="content room">Content Room</option>
                     </select>
                     <select name="mc" id="mc" value={formData.mc} onChange={(event) => setFormData({
                         ...formData, mc: event.target.value
                     })}>
                         <option value="">Select MC</option>
+                        <option value="MC dayoff">Day off</option>
                         {renderMCOptions}
                     </select>
                      <select name="pd" id="pd" value={formData.pd} onChange={(event) => setFormData({
                         ...formData, pd: event.target.value
                     })}>
                         <option value="">Select PD</option>
+                        <option value="PD dayoff">Day off</option>
                         {renderPDOptions}
                     </select>
                 <label htmlFor="startDateTime">
                     start date/time
                 </label>
-                <SessionPicker 
-                    wrapperClassName="session-picker"
-                    value={formData.startTime}
-                    onChange={(dateTime) => setFormData({ ...formData, startTime: dateTime })}
-                />
-                <label htmlFor="endDateTime">
-                    end date/time
-                </label>
-                <SessionPicker 
-                    wrapperClassName="session-picker"
-                    value={formData.endTime}
-                    onChange={(dateTime) => setFormData({ ...formData, endTime: dateTime })}
-                    dateFormat="dd/mm/yyyy"
-                />
+                    <SessionPicker 
+                        className="form-input-field"
+                        wrapperClassName="session-picker"
+                        value={formData.startTime}
+                        onChange={(dateTime) => setFormData({ ...formData, startTime: dateTime })}
+                        dateFormat="dd/mm/yyyy"
+                    />
+                    <label htmlFor="endDateTime">
+                        end date/time
+                    </label>
+                    <SessionPicker 
+                        className="form-input-field"
+                        wrapperClassName="session-picker"
+                        value={formData.endTime}
+                        onChange={(dateTime) => setFormData({ ...formData, endTime: dateTime })}
+                        dateFormat="dd/mm/yyyy"
+                    /> 
                 <br />
                 {validationErrors.length > 0 &&
                     <div className="session-validation-container">
@@ -224,7 +231,10 @@ const AddSessionForm = ({ events, existingEvent, selectRoom, mcName, pdName, sta
                                 <li key={i}>{err}</li>
                             );
                         })}
-                        </ul>        
+                        </ul>   
+                        {isHolidayDate &&
+                        <h5>Day off, cannot add session!</h5>
+                        }     
                     </div>
                 }
                 <div className="btn-group">

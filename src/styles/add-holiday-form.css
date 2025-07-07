@@ -1,0 +1,60 @@
+.holiday-form-container {
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    padding: 10px 20px;
+    width: 15vw;
+    text-transform: capitalize;
+}
+
+.holiday-form-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    font-weight: 600;
+}
+
+.picker-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+}
+
+label {
+    margin: 0;
+    padding: 0;
+}
+
+.picker-container .react-datepicker__input-container input {
+    border: solid #d1d1d1 0.3px;
+    border-radius: 6px;
+    padding: 10px;
+    width: inherit;
+}
+
+.holiday-form-btn-group {
+    display: flex;
+    gap: 5px;
+    margin-top: 20px;
+    width: 100%;
+}
+
+.holiday-form-btn-group button {
+    padding: 5px 10px;
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    text-transform: capitalize;
+}
+
+.save-btn {
+    background-color: #0e7abd;
+    color: #fff;
+}
+
+.save-btn:hover {
+    background-color: #34a9f1;
+}

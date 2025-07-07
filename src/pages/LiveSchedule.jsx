@@ -1,6 +1,6 @@
 import React from "react";
 import "../styles/manage-schedule.css"
-import UserCalendar from "./UserCalendar";
+import UserCalendar from "../components/calendar/UserCalendar";
 
 export default function LiveSchedule() {
     return (

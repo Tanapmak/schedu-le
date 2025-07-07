@@ -8,11 +8,11 @@ const roomColors = {
   lazada: "#4979D2",
   shopee: "#DD6E00",
   "content room": "#A149FF",
+  "day off": "#ED3419",
 }
 
-const SummaryDateHeader = ({ label, date, events, currentView }) => {
-
-    if(currentView !== "month") return <span>{label}</span>
+const SummaryDateHeader = ({ onClick, label, date, events, currentView }) => {
+  if(currentView !== "month") return <span>{label}</span>
 
   const eventsForDay = events.filter(ev =>
     isSameDay(ev.start, date)
@@ -26,8 +26,12 @@ const SummaryDateHeader = ({ label, date, events, currentView }) => {
     summary[room] = (summary[room] || 0) + duration;
   });
 
+  const handleClick = () => {
+    onClick(date)
+  }
+
   return (
-    <div style={{
+    <div onClick={handleClick} style={{
         display: "flex",
         flexDirection: "column",
         gap: "2px",

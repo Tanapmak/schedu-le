@@ -1,5 +1,5 @@
 import React from "react";
-import '../styles/globalnav.css'
+import '../../styles/globalnav.css'
 
 const Globalnav = (props) => {
     return (

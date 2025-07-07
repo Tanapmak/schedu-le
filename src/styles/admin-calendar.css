@@ -71,14 +71,43 @@ form {
   flex-direction: column;
   gap: 10px;
   margin-top: 10px;
+  width: 100%;
 }
 
-input {
+.form-input-field {
+  width: 100%;
   padding: 10px;
-  width: 165%;
   border: solid #d0d0d0 0.3px;
   border-radius: 6px;
+  box-sizing: border-box;
+  font-size: 0.7rem;
 }
+
+.datetime-picker-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.session-picker {
+  width: 100%;
+}
+
+/* .datepicker-input {
+  width: 100%;
+  padding: 10px;
+  font-size: 0.8rem;
+  border: 0.3px solid #d0d0d0;
+  border-radius: 6px;
+  box-sizing: border-box;
+} */
+
+/* input {
+  padding: 10px;
+  width: 100%;
+  border: solid #d0d0d0 0.3px;
+  border-radius: 6px;
+} */
 
 select {
   padding: 10px;
@@ -149,9 +178,9 @@ label {
   background-color: #626262;
 }
 
-.session-picker {
+/* .session-picker {
   background-color: #007BB0;
-}
+} */
 
 .session-validation-container h5{
   color: #ff3838;
