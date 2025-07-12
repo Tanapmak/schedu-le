@@ -235,7 +235,7 @@ const AdminCalendar = ({
              event: (props) => (
               currentView === "month"
               ? null
-              : <SessionCard event={props.event} view={currentView} allEvents={events}/>
+              : <SessionCard event={props.event} view={currentView} allEvents={events} uSage={"admin"}/>
           ),
           month: {
             dateHeader: (props) => (
@@ -244,6 +244,7 @@ const AdminCalendar = ({
                 events={events}
                 currentView={currentView}
                 onClick={handleClickedSummaryCard}
+                uSage={"admin"}
               />
             )
           }

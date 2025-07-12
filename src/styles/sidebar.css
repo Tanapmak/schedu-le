@@ -15,13 +15,17 @@
     padding: 12px;
     display: flex;
     flex-direction: column;  
-    transition: width 0.2s ease-out;   
+    transition: width 0.2s ease-out;  
+    overflow: scroll; 
 }
 
 .sidebar-logo-container {
     display: flex;
     justify-content: space-between;
     padding-bottom: 16px;
+    position: sticky;
+    top: 0;
+    background-color: #484848;
 }
 
 .sidebar-hamburger-menu, .sidebar-close {

@@ -7,7 +7,13 @@ h1,h2,h3,h4,h5,h6,p {
     margin: 0;
 }
 
-.main-container {
+.rbc-event {
+  font-size: 0.7rem;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.calendar-main-container {
     padding: 10px 25px;
     flex: 1;
     /* overflow: hidden; */
@@ -45,14 +51,15 @@ h1,h2,h3,h4,h5,h6,p {
     font-weight: 650;
 }
 
-.export-section {
+.calendar-button-section {
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 12px;
+    width: max-content;
 }
 
-.export-section button {
+.calendar-button-section  button {
     padding: 6px 20px;
     border-radius: 6px;
     border: none;
@@ -60,10 +67,9 @@ h1,h2,h3,h4,h5,h6,p {
     background-color: #323232;
     font-size: 0.7rem;
     text-transform: capitalize;
-    width: max-content;
 }
 
-.export-section button:hover {
+.calendar-button-section  button:hover {
     background-color: #007BB0;
 }
 
@@ -71,3 +77,15 @@ h1,h2,h3,h4,h5,h6,p {
     flex: 1;
 }
 
+.select-btn, .calendar-export-btn {
+    width: max-content;
+    padding: 5px 10px;
+}
+
+.select-btn {
+    border: #a0a0a0 solid 0.3px;
+}
+
+.calendar-export-btn {
+    border: #323232 solid 0.3px;
+}

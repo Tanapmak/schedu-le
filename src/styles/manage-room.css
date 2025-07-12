@@ -1,0 +1,104 @@
+.add-room-btn-group {
+    display: flex;
+}
+
+.add-room-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    background-color: #0077b8;
+    color: #f3f3f3;
+    text-transform: capitalize;
+    width: 110px;
+}
+
+.room-card-container {
+    display: flex;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    gap: 20px;
+}
+
+.roomcard {
+    background-color: #f1f1f1;
+    border-radius: 6px;
+    padding: 30px;
+    width: 320px;
+    height: 150px;
+}
+
+.roomname {
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+.room-name-btn-group {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+}
+
+.room-edit-btn, .room-delete-btn {
+    width: 100%;
+    padding: 8px 10px;
+    text-transform: capitalize;
+    border-radius: 6px;
+    border: none;
+}
+
+.room-edit-btn {
+    background-color: #2e2e2e;
+    color: #f1f1f1;
+}
+
+.room-edit-btn:hover {
+    background-color: #2f95e3;
+}
+
+.room-delete-btn {
+    background-color: #c4c4c4;
+    color: #2e2e2e;
+}
+
+.room-delete-btn:hover {
+    background-color: #dd5b49;
+    color: #f1f1f1;
+}
+
+.add-room-input-container {
+    width: 100%;
+    margin-top: 20px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.addroom-input-box {
+    width: 100%;
+    border: none;
+    background-color: #f1f1f1;
+    border-radius: 6px;
+    padding: 15px;
+}
+
+.edit-room-input {
+    width: 100%;
+    border: #858585 0.3px solid;
+    background-color: #f1f1f1;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 1.4rem;
+    font-weight: 500;
+}
+
+.no-room-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.no-room-add {
+    color: #858585;
+}

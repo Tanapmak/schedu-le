@@ -1,0 +1,66 @@
+.dayoff-form-container {
+    display: none;
+    width: 0;
+}
+
+.dayoff-form-container.open {
+    display: flex;
+    flex-direction: column;
+    background-color: #fff;
+    padding: 20px 30px;
+    width: 100%;
+    text-transform: capitalize;
+    border-radius: 6px;
+    height: 95%;
+}
+
+.dayoff-form-title {
+    margin-top: 10px;
+    margin-bottom: 5px;
+}
+
+.form-inputarea {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+input {
+    padding: 8px 20px;
+    border-radius: 6px;
+    border: solid #dfdfdf 0.3px;
+}
+
+.dayoff-form-btn-group {
+    margin-top: 20px;
+    width: 100%;
+    display: flex;
+    gap: 10px;
+}
+
+.dayoff-form-btn-group button {
+    width: 100%;
+    padding: 10px 20px;
+    text-transform: capitalize;
+    border: none;
+    border-radius: 6px;
+}
+
+.submit-btn {
+    background-color: #2e2e2e;
+    color: #f7f7f7;
+}
+
+.cancel-btn {
+    background-color: #e2e2e2;
+    color: #303030;
+}
+
+.submit-btn:hover {
+    background-color: #078ed6;
+}
+
+.cancel-btn:hover {
+    background-color: #cdcdcd;
+}

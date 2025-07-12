@@ -1,9 +1,9 @@
 import { isSameDay } from "date-fns";
 import React from "react";
 
-const SessionCard = ({ event, view ,allEvents}) => {
+const SessionCard = ({ event, view ,allEvents, uSage}) => {
 const durationHours = (new Date(event.end) - new Date(event.start)) / 1000 / 60 / 60;
-    if(view === "month") {
+    if(view === "month" && uSage === "admin") {
         const sameDayEvents = allEvents.filter(e => isSameDay(new Date(e.start), new Date(event.start)));
 
         if (sameDayEvents[0] !== event) return null;

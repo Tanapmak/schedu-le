@@ -11,7 +11,7 @@ const roomColors = {
   "day off": "#ED3419",
 }
 
-const SummaryDateHeader = ({ onClick, label, date, events, currentView }) => {
+const SummaryDateHeader = ({ onClick, label, date, events, currentView, uSage }) => {
   if(currentView !== "month") return <span>{label}</span>
 
   const eventsForDay = events.filter(ev =>

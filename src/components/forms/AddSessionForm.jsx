@@ -163,7 +163,7 @@ const AddSessionForm = ({
                 </div>  
             </div>
             
-            <form onSubmit={handleSubmit} className="form-container">
+            <form onSubmit={handleSubmit} className="add-session-form-container">
                 <label htmlFor="startDateTime">
                     session information
                 </label>

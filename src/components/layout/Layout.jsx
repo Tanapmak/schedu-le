@@ -3,8 +3,11 @@ import Globalnav from "../../components/layout/Globalnav.jsx";
 import Sidebar from "../../components/layout/Sidebar.jsx";
 import ManageSchedule from "../../pages/ManageSchedule.jsx";
 import LiveSchedule from "../../pages/LiveSchedule";
-import MyDayOff from "../leave/MyDayOff.jsx";
+import MyDayOff from "../../pages/MyDayOff";
 import Home from "../../pages/Home"
+import ManageDayOff from "../../pages/ManageDayOff.jsx";
+import ManageMCPD from "../../pages/ManageMCPD.jsx";
+import ManageRoom from "../../pages/ManageRoom.jsx";
 import { useState } from "react";
 import '../../styles/layout.css'
 
@@ -28,8 +31,14 @@ const Layout = () => {
                 return <LiveSchedule />;
             case "ManageSchedule":
                 return <ManageSchedule />;  
-            case "MyLeave":
-                return <MyDayOff />;        
+            case "MyDayOff":
+                return <MyDayOff />;   
+            case "ManageDayOff":
+                 return <ManageDayOff />; 
+            case "ManageMCPD":
+                return <ManageMCPD />;
+            case "ManageRoom":
+                return <ManageRoom />;
             default:
                 return <Home />;
         }

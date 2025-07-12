@@ -7,11 +7,19 @@
     background-color: #f3f3f3;
 }
 
+.dayofflist-table {
+    width: 100%;
+}
+
 .table-main-container {
     height: 83vh;
-    background-color: #f3f3f3;
-    padding: 20px;
     margin-top: 20px;
+}
+
+.table-main-container.open {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
 }
 
 th, td {

@@ -1,0 +1,43 @@
+th {
+    font-size: 0.9rem;
+}
+td {
+    border-bottom: 0.3px #bababa solid;
+    font-size: 0.9rem;
+    text-transform: capitalize;
+    background-color: #f3f3f3;
+}
+
+.table-container {
+    width: 100%;
+}
+
+.manage-mc-pd-container {
+    display: flex;
+    gap: 20px;
+}
+
+.mc-pd-list-container {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 20px;
+}
+
+.action-btn-group {
+    display: flex;
+    gap: 10px;
+}
+
+.add-mcpd-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    background-color: #0077b8;
+    color: #f3f3f3;
+    text-transform: capitalize;
+    width: max-content;
+}
+
+.add-mcpd-btn:hover {
+    background-color: #363636;
+}
