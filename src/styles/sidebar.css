@@ -60,6 +60,10 @@
     color: #dadada;
 }
 
+.sidebar-item-container:active, .sidebar-main-item-container:active {
+    background-color: #252525;
+}
+
 .sidebar-main-item-container {
     justify-content: space-between;
 }

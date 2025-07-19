@@ -167,18 +167,28 @@ const AddSessionForm = ({
                 <label htmlFor="startDateTime">
                     session information
                 </label>
-                    <select name="dayType" id="dayType" value={formData.typeOfDay} onChange={(event) => setFormData({
-                        ...formData, typeOfDay: event.target.value
-                    })}>
+                    <select 
+                        name="day_type" 
+                        id="dayType" 
+                        value={formData.typeOfDay} 
+                        onChange={(event) => setFormData({
+                            ...formData, typeOfDay: event.target.value
+                        })}
+                    >
                         <button>
                         <selectedcontent></selectedcontent>
                         </button>
                         <option value="">Select Day Type</option>
                         {renderDayOptions}
                     </select>
-                    <select name="room" id="room" value={formData.room} onChange={(event) => setFormData({
-                        ...formData, room: event.target.value
-                    })}>
+                    <select 
+                        name="room_id" 
+                        id="room" 
+                        value={formData.room} 
+                        onChange={(event) => setFormData({
+                            ...formData, room: event.target.value
+                        })}
+                    >
                         <button>
                         <selectedcontent></selectedcontent>
                         </button>
@@ -187,16 +197,26 @@ const AddSessionForm = ({
                         {renderRoomOptions}
                         <option value="content room">Content Room</option>
                     </select>
-                    <select name="mc" id="mc" value={formData.mc} onChange={(event) => setFormData({
-                        ...formData, mc: event.target.value
-                    })}>
+                    <select 
+                        name="mc_id" 
+                        id="mc" 
+                        value={formData.mc} 
+                        onChange={(event) => setFormData({
+                            ...formData, mc: event.target.value
+                        })}
+                    >
                         <option value="">Select MC</option>
                         <option value="MC dayoff">Day off</option>
                         {renderMCOptions}
                     </select>
-                     <select name="pd" id="pd" value={formData.pd} onChange={(event) => setFormData({
-                        ...formData, pd: event.target.value
-                    })}>
+                     <select 
+                        name="pd_id" 
+                        id="pd" 
+                        value={formData.pd} 
+                        onChange={(event) => setFormData({
+                            ...formData, pd: event.target.value
+                        })}
+                    >
                         <option value="">Select PD</option>
                         <option value="PD dayoff">Day off</option>
                         {renderPDOptions}
@@ -205,6 +225,7 @@ const AddSessionForm = ({
                     start date/time
                 </label>
                     <SessionPicker 
+                        name="session_start"
                         className="form-input-field"
                         wrapperClassName="session-picker"
                         value={formData.startTime}
@@ -215,6 +236,7 @@ const AddSessionForm = ({
                         end date/time
                     </label>
                     <SessionPicker 
+                        name="session_end"
                         className="form-input-field"
                         wrapperClassName="session-picker"
                         value={formData.endTime}

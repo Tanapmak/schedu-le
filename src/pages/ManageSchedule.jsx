@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import api from "../api.js";
 import "../styles/manage-schedule.css"
 import AdminCalendar from "../components/calendar/AdminCalendar";
 import AddSessionForm from "../components/forms/AddSessionForm";
@@ -7,20 +8,25 @@ import EventDetailModal from "../components/calendar/EventDetailModal";
 import SummaryDateHeader from "../components/calendar/SummaryDateHeader";
 
 export default function ManageSchedule() {
+    // Calendar view & data state
     const [currentView, setCurrentView] = useState("week");
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [openToolBar, setOpenToolBar] = useState(false);
-    const [editMode, setEditMode] = useState(false);
-    const [events, setEvents] = useState([]);
-    const [selectedEvent, setSelectedEvent] = useState(null);
-    const [targetEvent, setTargetEvent] = useState(null);
-    const [selectedSlot, setSelectedSlot] = useState({
-        start: "",
-        end: "",
-    });
 
-    const [isClickDayOff, setClickDayOff] = useState(false);
+    // Data Lists
+    const [events, setEvents] = useState([]);
     const [holidayEvents, setHolidayEvents] = useState([]);
+    const [mcList, setMcList] = useState([]);
+    const [pdList, setPdList] = useState([]);
+    const [roomList, setRoomList] = useState([]);
+
+    // Form & selection states
+    const [openForm, setOpenForm] = useState(false);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [targetEvent, setTargetEvent] = useState(null);
+    const [selectedSlot, setSelectedSlot] = useState({});
+
+    // Day-offs controls
+    const [isClickDayOff, setClickDayOff] = useState(false);
     const [isDayOffDate, setDayOffDate] = useState(false);
     
 

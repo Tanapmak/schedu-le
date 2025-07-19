@@ -5,8 +5,9 @@ const router = new Router();
 
 router
     .get("/", ctrl.getAllSessions)
+    .get("/dayoff", ctrl.getDayOffSessions)
     .get("/:id", ctrl.getSessionById)
-    .post("/:id", ctrl.createSession)
+    .post("/", ctrl.createSession)
     .put("/:id", ctrl.updateSession)
     .delete("/:id", ctrl.deleteSession);
 

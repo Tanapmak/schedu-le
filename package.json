@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "axios": "^1.10.0",
     "date-fns": "^4.1.0",
     "nodemon": "^3.1.10",
     "parse": "^6.1.1",
