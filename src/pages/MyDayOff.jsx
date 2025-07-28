@@ -1,31 +1,69 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import api from "../api";
 import "../styles/my-day-off.css"
 import DayOffRequestForm from "../components/forms/DayOffRequestForm";
+import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
 
 const MyDayOff = () => {
     const [dayOffList, setDayOffList] = useState([]);
     const [clickRequest, setClickRequest] = useState(false);
     const [clickEdit, setEditForm] = useState(false);
-    const [selectedDayOff, setSelectedDayOff] = useState(null)
+    const [selectedDayOff, setSelectedDayOff] = useState(null);
+    const [personnelList, setPersonelList] = useState([]);
 
-    const handleRequestDayOff = (dayOffData) => {
-        if(clickEdit && selectedDayOff) {
-            console.log("dayoff submitted");
-            setDayOffList(prev =>
-                prev.map(item => item.id === dayOffData.id ? dayOffData : item)
-            );
-            setEditForm(false);
-            setSelectedDayOff(null);
-        } else {
-            const newDayOffData = {
-                ...dayOffData,
-                id: Date.now(),
-                status: "Pending",
-            };
-            setDayOffList((prev => [...prev, newDayOffData]))
+    const fetchPersonnelData = async () => {
+        try {
+            const result = await api.get("/personnels");
+            console.log("raw API personnel data", result.data);
+            setPersonelList(result.data)
+        } catch (err) {
+            console.log("Error fetching personnel list:", err);
         }
+    }
 
-        setClickRequest(false);
+    const fetchDayoffList = async () => {
+        try {
+            const result = await api.get("/dayoffs");
+            console.log("raw API dayoff data", result.data);
+            setDayOffList(result.data);
+        } catch (err) {
+            console.error("Error fetching dayoff list", err);   
+        }
+    };
+
+    useEffect(() => {
+        fetchDayoffList();
+        fetchPersonnelData();
+    },[]);
+
+    const handleRequestDayOff = async (dayOffData) => {
+        const payload = {
+            requester_id: dayOffData.userID,
+            position_id: dayOffData.positionID,
+            dayoff_start: format(dayOffData.start, "yyyy-MM-dd'T'HH:mm:ss"),
+            dayoff_end: format(dayOffData.end, "yyyy-MM-dd'T'HH:mm:ss"),
+            is_urgent: dayOffData.isUrgent,
+            reason: dayOffData.reason,
+            dayoff_status: dayOffData.status,
+        }
+        console.log("data sending to backend", payload);
+        
+        try {
+            if(clickEdit && selectedDayOff) {
+                console.log("updated dayoff submitted");
+                await api.put(`/dayoffs/${dayOffData.id}`, payload);
+                fetchDayoffList();
+                setEditForm(false);
+                setSelectedDayOff(null);
+            } else {
+                console.log("created dayoff");
+                await api.post("/dayoffs", payload);
+                fetchDayoffList();
+            }
+            setClickRequest(false);
+        } catch (err) {
+            console.error("Error creating dayoff request", err);
+        }
     }
 
     const handleClickRequest = () => {
@@ -71,10 +109,17 @@ const MyDayOff = () => {
         return dates.some(date => countDayOffs(date, position) >= 2);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         const confirmDelete = window.confirm("Are you sure you want to delete this request?");
-        if (confirmDelete) {
-            setDayOffList(prev => prev.filter(item => item.id !== id));
+        console.log("dayoff request id to delete", id);
+        
+        if (!confirmDelete) return;
+            
+        try {
+            await api.delete(`/dayoffs/${id}`);
+            await fetchDayoffList();
+        } catch (err) {
+            console.error("Error deleting dayoff request:", err);
         }
     };
 
@@ -110,18 +155,18 @@ const MyDayOff = () => {
                             {dayOffList.length > 0 ? (
                                 dayOffList.map((request, index) => (
                                     <tr key={index}>
-                                        <td>{request.start? request.start.toLocaleDateString() : 'N/A'}</td>
-                                        <td>{request.end? request.start.toLocaleDateString() : 'N/A'}</td>
-                                        <td>{request.user || 'N/A'}</td>
+                                        <td>{request.dayoff_start? new Date(request.dayoff_start).toLocaleDateString() : 'N/A'}</td>
+                                        <td>{request.dayoff_end? new Date(request.dayoff_end).toLocaleDateString() : 'N/A'}</td>
+                                        <td>{request.requester_name || 'N/A'}</td>
                                         <td>
                                             {Math.ceil(
-                                                (new Date(request.end) - new Date(request.start)) /
+                                                (new Date(request.dayoff_end) - new Date(request.dayoff_start)) /
                                                 (1000 * 60 * 60 * 24)
                                             ) + 1} day
                                         </td>
-                                        <td>{request.type}</td>
+                                        <td>{request.type === "urgent" ? "Urgent" : "Normal"}</td>
                                         <td>{request.reason}</td>
-                                        <td>{request.status}</td>
+                                        <td>{request.dayoff_status}</td>
                                         <td className="dayoff-btn-group">
                                             <button className="btn dayoff-edit-btn" onClick={()=>handleEdit(request)}>edit</button>
                                             <button className="btn dayoff-delete-btn" onClick={() => handleDelete(request.id)}>delete</button>
@@ -149,6 +194,7 @@ const MyDayOff = () => {
                             validateDayOffCount={(start, end, position) =>
                                 hasConflictInRange(start, end, position)
                             }
+                            personnelList={personnelList}
                             />
                         </div>
                     }

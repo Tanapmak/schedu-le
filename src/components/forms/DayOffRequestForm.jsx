@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
+import api from "../../api";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "../../styles/dayoff-request-form.css"
 
-const DayOffRequestForm = ({handleRequestDayOff, setClickRequest, clickRequest, clickEdit, selectedDayOff, setSelectedDayOff, validateDayOffCount}) => {
-    const currentUsername = "username"
+const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest, clickRequest, clickEdit, selectedDayOff, setSelectedDayOff, validateDayOffCount}) => {
 
     const [currentDate, setDate] = useState({
         startDate: new Date(),
@@ -14,28 +14,35 @@ const DayOffRequestForm = ({handleRequestDayOff, setClickRequest, clickRequest, 
     const [isUrgentDayOff, setUrgentDayOff] = useState(false);
 
     const [dayOffFormData, setDayOffFormData] = useState({
-        user: currentUsername,
+        user: null,
+        userID: null,
         position: null,
+        positionID: null,
         start: currentDate.start,
         end: currentDate.end,
         type: "normal",
+        isUrgent: false,
         reason: "",
-        status: "Pending",
+        status: "pending",
     });
 
     useEffect(() => {
         if(clickEdit && selectedDayOff) {
+            
             setDayOffFormData({
                 id: selectedDayOff.id,
-                user: selectedDayOff.user,
-                position: selectedDayOff.position,
+                user: selectedDayOff.requester_name,
+                userID: selectedDayOff.personnel_id,
+                position: selectedDayOff.position_name,
+                positionID: selectedDayOff.position_id,
                 type: selectedDayOff.type || "normal",
+                isUrgent: selectedDayOff.isUrgent || false,
                 reason: selectedDayOff.reason || "",
-                status: selectedDayOff.status || "Pending",
+                status: selectedDayOff.status || "pending",
             });
             setDate({
-            startDate: new Date(selectedDayOff.start),
-            endDate: new Date(selectedDayOff.end),
+            startDate: new Date(selectedDayOff.dayoff_start),
+            endDate: new Date(selectedDayOff.dayoff_end),
             });
         }
         
@@ -48,7 +55,7 @@ const DayOffRequestForm = ({handleRequestDayOff, setClickRequest, clickRequest, 
 
     const handleSubmit = (event) => {
         event.preventDefault(); // Prevent the default form submission (page reload)
-        console.log("Form data to submit:", dayOffFormData); // For debugging
+        console.log("Dayoff form data:", dayOffFormData); // For debugging
         if (!isUrgentDayOff) {
             const conflict = validateDayOffCount(
                 currentDate.startDate, currentDate.endDate, dayOffFormData.position
@@ -61,17 +68,20 @@ const DayOffRequestForm = ({handleRequestDayOff, setClickRequest, clickRequest, 
         const finalData = {
             ...dayOffFormData,
             id: dayOffFormData.id || Date.now(),
-            position: dayOffFormData.position,
+            positionID: dayOffFormData.positionID,
             type: dayOffFormData.type,
+            isUrgent: dayOffFormData.isUrgent,
             reason: dayOffFormData.reason,
             start: currentDate.startDate,
             end: currentDate.endDate,
         };
+        console.log("Dayoff form data to submit", finalData);
+        
         handleRequestDayOff(finalData); // Pass the collected data to the parent
         // Optional: Reset form fields after submission
 
         setDayOffFormData({
-            user: currentUsername,
+            user: null,
             position: null,
             start: new Date(),
             end: new Date(),
@@ -92,27 +102,37 @@ const DayOffRequestForm = ({handleRequestDayOff, setClickRequest, clickRequest, 
             </h3>
             <form action="" onSubmit={handleSubmit}>
                 <div className="form-inputarea">
-                <label htmlFor="">requester</label>
-                <input 
-                type="text" 
-                placeholder={currentUsername} 
-                value={dayOffFormData.user}
-                onChange={(event) => setDayOffFormData({
-                    ...dayOffFormData, user: event.target.value
-                })}
-                />
+                <label htmlFor="">Requester</label>
+                
+                <select
+                    value={dayOffFormData.userID || ""}
+                    onChange={(e) => {
+                        const selected = personnelList.find(p => p.personnel_id === parseInt(e.target.value))
+                        if (selected) {
+                            setDayOffFormData((prev) => ({
+                                ...prev,
+                                userID: selected.personnel_id,
+                                user: selected.nickname,
+                                positionID: selected.position_id,
+                                position: selected.position_name,
+                            }));
+                        }}
+                    }
+                >
+                    <option value="">Select requester</option>
+                    {personnelList.map((requester) => 
+                    <option key={requester.id} value={requester.personnel_id}>{requester.nickname}</option>
+                    )}
+                    </select>
+                
             </div>
             <div className="form-inputarea">
                 <label htmlFor="">position</label>
-                <select
-                    value={dayOffFormData.position || "mc"}
-                    onChange={(e) =>
-                    setDayOffFormData({ ...dayOffFormData, position: e.target.value })
-                    }
-                >
-                    <option value="mc">MC</option>
-                    <option value="pd">PD</option>
-                </select>
+                <input 
+                type="text" 
+                value={dayOffFormData.position || ""}
+                disabled
+                />
             </div>
             <div className="form-inputarea">
                 <label htmlFor="">start date</label>
@@ -149,6 +169,7 @@ const DayOffRequestForm = ({handleRequestDayOff, setClickRequest, clickRequest, 
                         setDayOffFormData(prev => ({
                             ...prev,
                             type: isChecked ? "urgent" : "normal",
+                            isUrgent: true,
                         }))
                         console.log(isUrgentDayOff);   
                      }}

@@ -5,58 +5,45 @@ import {CirclePicker} from "react-color";
 const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, onSaveNewPersonel}) => {
 
     const [addPersonelFormData, setAddPersonelFormData] = useState({
-        name: "",
-        surname: "",
+        personnel_id: "",
+        fName: "",
+        lName: "",
         nickname: "",
         color: "",
-        role: "",
+        position: "",
+        positionID: "",
         employmentType: "",
         status: "",
         kpiHours: "",
         maxHours: "",
     })
 
-    const handleSubmit = (event) => {
-        event.preventDefault();
-        console.log("Form data to submit:", addPersonelFormData);
-
-        const newPersonel = {
-            name: addPersonelFormData.name,
-            surname: addPersonelFormData.surname,
-            nickname: addPersonelFormData.nickname,
-            color: addPersonelFormData.color,
-            role: addPersonelFormData.role,
-            employmentType: addPersonelFormData.employmentType,
-            status: addPersonelFormData.status,
-            kpiHours: addPersonelFormData.kpiHours,
-            maxHours: addPersonelFormData.maxHours,
-        }
-
-        onSaveNewPersonel(newPersonel);
-
-    }
-
     useEffect(() => {
+        console.log("check selectedpersoneldata", selectedPersonel);
+        
         if (isClickEdit && selectedPersonel) {
             setAddPersonelFormData({
-                name: selectedPersonel.name || "",
-                surname: selectedPersonel.surname || "",
+                personnel_id: selectedPersonel.personnel_id || "",
+                fName: selectedPersonel.f_name || "",
+                lName: selectedPersonel.l_name || "",
                 nickname: selectedPersonel.nickname || "",
                 color: selectedPersonel.color || "",
-                role: selectedPersonel.role || "",
-                employmentType: selectedPersonel.employmentType || "",
+                position: selectedPersonel.position_name || "",
+                positionID: selectedPersonel.position_id || "",
+                employmentType: selectedPersonel.employment_type || "",
                 status: selectedPersonel.status || "",
-                kpiHours: selectedPersonel.kpiHours || "",
-                maxHours: selectedPersonel.maxHours || "",
-                id: selectedPersonel.id,
+                kpiHours: selectedPersonel.kpi_hours || "",
+                maxHours: selectedPersonel.max_hours || "",
             });
         } else {
             setAddPersonelFormData({
-                name: "",
-                surname: "",
+                personnel_id: addPersonelFormData.personnel_id || "",
+                fName: "",
+                lName: "",
                 nickname: "",
                 color: "",
-                role: "",
+                position: "",
+                positionID: "",
                 employmentType: "",
                 status: "",
                 kpiHours: "",
@@ -64,6 +51,29 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
             });
         }
     }, [isClickEdit, selectedPersonel]);
+
+    const handleSubmit = (event) => {
+        event.preventDefault();
+        console.log("Form data to submit:", addPersonelFormData);
+
+        const newPersonel = {
+            personnel_id: addPersonelFormData.personnel_id,
+            f_name: addPersonelFormData.fName,
+            l_name: addPersonelFormData.lName,
+            nickname: addPersonelFormData.nickname,
+            color: addPersonelFormData.color,
+            position_id: addPersonelFormData.positionID,
+            position: addPersonelFormData.position,
+            employment_type: addPersonelFormData.employmentType,
+            status: addPersonelFormData.status,
+            kpi_hours: addPersonelFormData.kpiHours,
+            max_hours: addPersonelFormData.maxHours,
+        }
+        console.log("onSavenew personal submit:", newPersonel);
+
+        onSaveNewPersonel(newPersonel);
+        onFormClose();
+    }
 
     return(
         <div className="form-container">
@@ -78,23 +88,26 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
                     <label htmlFor="">First Name / Last Name</label>
                     <input 
                     type="text" 
+                    name="fName"
                     placeholder="Enter First Name"
                     onChange={(event) => setAddPersonelFormData({
-                        ...addPersonelFormData, name: event.target.value
+                        ...addPersonelFormData, fName: event.target.value
                     })}
-                    value={addPersonelFormData.name}
+                    value={addPersonelFormData.fName}
                     />
                     <input 
                     type="text" 
+                    name="lName"
                     placeholder="Enter Last Name"
                     onChange={(event) => setAddPersonelFormData({
-                        ...addPersonelFormData, surname: event.target.value
+                        ...addPersonelFormData, lName: event.target.value
                     })}
-                    value={addPersonelFormData.surname}
+                    value={addPersonelFormData.lName}
                     />
                     <label htmlFor="">Nickname</label>
                     <input 
                     type="text" 
+                    name="nickname"
                     placeholder="Enter Nickname"
                     onChange={(event) => setAddPersonelFormData({
                         ...addPersonelFormData, nickname: event.target.value
@@ -105,12 +118,14 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
                     <div className="colorpicker-container">
                         <CirclePicker
                             color={addPersonelFormData.color}
+                            name="color"
                             onChangeComplete={(color) =>
                                 setAddPersonelFormData({
                                 ...addPersonelFormData,
                                 color: color.hex,
                                 })
                             }
+                            value={addPersonelFormData.color}
                             circleSize={18}
                             circleSpacing={5}
                         />
@@ -126,14 +141,15 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
                     ></div>
                     <label htmlFor="">Role</label>
                     <select
-                        value={addPersonelFormData.role || ""}
+                        name="position_id"
+                        value={addPersonelFormData.positionID || ""}
                         onChange={(e) =>
-                            setAddPersonelFormData({ ...addPersonelFormData, role: e.target.value })
+                            setAddPersonelFormData({ ...addPersonelFormData, positionID: e.target.value })
                         }
                     >
                         <option value="">select role</option>
-                        <option value="MC">MC</option>
-                        <option value="PD">PD</option>
+                        <option value="1">MC</option>
+                        <option value="2">PD</option>
                     </select>
                     <label htmlFor="">Employment Information</label>
                     <select
@@ -143,7 +159,7 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
                         }
                     >
                         <option value="">Full Time or Freelance</option>
-                        <option value="full-time">Full Time</option>
+                        <option value="fulltime">Full Time</option>
                         <option value="freelance">Freelance</option>
                     </select>
                     <select
@@ -153,7 +169,7 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
                         }
                     >
                         <option value="">Onboarding or resigned</option>
-                        <option value="onboarding">Onboarding</option>
+                        <option value="Onboarding">Onboarding</option>
                         <option value="resign">Resigned</option>
                     </select>
                     <label htmlFor="">KPI Hours</label>
@@ -177,7 +193,7 @@ const AddMCPDForm = ({isFormOpen, onFormClose, isClickEdit, selectedPersonel, on
                 </div>
                 <div className="button-group-area">
                     <button className="form-button save-button" type="submit">save</button>
-                    <button className="form-button cancel-button" onClick={onFormClose}>cancel</button>
+                    <button className="form-button cancel-button" type="button" onClick={onFormClose}>cancel</button>
                 </div>
             </form>
         </div>

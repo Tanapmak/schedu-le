@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, {useState, useEffect} from "react";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
 import enUS from "date-fns/locale/en-US";
@@ -15,6 +15,7 @@ import EventDetailModal from "./EventDetailModal";
 import SummaryDateHeader from "./SummaryDateHeader";
 import SummaryCardPanel from "./SummaryCardPanel";
 import AddHolidayForm from "../forms/AddHolidayForm";
+import api from "../../api.js";
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -42,8 +43,6 @@ const AdminCalendar = ({
   setEditMode,
   events,
   setEvents,
-  selectedEvent,
-  setSelectedEvent,
   selectedSlot,
   setSelectedSlot,
   validateSession,
@@ -63,55 +62,102 @@ const AdminCalendar = ({
   const [clickSummaryCard, setClickSummaryCard] = useState(false)
   const [clickSeeAllBtn, setClickSeeAllBtn] = useState(false);
 
+  useEffect(() => {
+  console.log("🧠 Events passed to calendar:", events);
+  if (events.length > 0) {
+    console.log("✅ Example event:", events[0]);
+    console.log("🕒 start type:", typeof events[0].start, "value:", events[0].start);
+    console.log("🕒 end type:", typeof events[0].end, "value:", events[0].end);
+  }
+}, [events]);
+
   const allEvents = [...events, ...holidayEvents]
   
   const isHoliday = holidayEvents.some(holiday =>
     isSameDay(newEvent.start, holiday.start)
   );
 
-  const handleDeleteEvent = (event) => {
-    setEvents(
-      (prevEvents) => prevEvents.filter((ev) => ev.id !== targetEvent.id)
-    );
-    setTargetEvent(null);
+  const handleDeleteEvent = async (deleteEvent) => {
+    try {
+      const targetID = deleteEvent.id;
+      const result = await api.delete(`sessions/${targetID}`);
+      setEvents(
+        (prevEvents) => prevEvents.filter((ev) => ev.id !== targetID)
+      );
+      setTargetEvent(null);
+      setSelectedSlot(null);
+      setOpenToolBar(false);
+      
+    } catch (err) {
+      console.error("delete event error :", err);
+    }
   }
 
     const checkDayOff = (startDate, endDate) => {
+      if (clickSummaryCard) {
+        return {
+          start: startDate,
+          end: endDate,
+        }
+      }
         const startDay = new Date(startDate).toDateString();
         const endDay = new Date(endDate).toDateString();
 
         const hasDayOff = events.some(ev => {
           const evDate = new Date(ev.start).toDateString();
-          return evDate === startDay && ev.title?.toLowerCase() === "day off";
+          return evDate === startDay && ev.day_type?.toLowerCase() === "dayoff";
         });
 
         if(hasDayOff) {
           alert("Today is day off, cannot add session!");
+          setOpenToolBar(false);
           return null;
         }
-
-        return {
-          start: startDate,
-          end: endDate
+        if(!hasDayOff && !clickSummaryCard) {
+          setOpenToolBar(true)
+          return {
+            start: startDate,
+            end: endDate
+          }
         }
     }  
 
   const [validationErrors, setValidationErrors] = useState([]);
 
-  const handleDnD = ({event, start, end}) => {
-    const updatedEvent = {...event, start, end};
+  const handleDnD = async ({event, start, end}) => {
+    console.log("DnD received event:",event);
+    
+    try {
+      const payload = {
+        day_type: event.day_type,
+        room_id: event.room_id,
+        mc_id: event.mc_id,
+        pd_id: event.pd_id,
+        session_start: new Date(start).toISOString(),
+        session_end: new Date(end).toISOString(),
+      }
 
-    const errors = validateSession(updatedEvent);
+      console.log("check payload",payload);
+      
 
-    if(errors.length > 0) {
-      setValidationErrors(errors)
-      errors.forEach((err) => alert(err));
-      return;
+      const response = await api.patch(`sessions/${event.id}`, payload);
+
+      setEvents((prevEvents) => {
+        return prevEvents.map(
+          (ev) => ev.id === event.id
+        ? {...response.data,
+            session_start: new Date(response.data.session_start),
+            session_end: new Date(response.data.session_end),
+            start: new Date(response.data.session_start),
+            end: new Date(response.data.session_end),
+          }
+        : ev
+        ) 
+      });
+    } catch (err) {
+      console.error("Admin calendar DnD error",err);
+      alert(`Failed update session : ${err?.response?.data?.error || err.message}`);
     }
-
-    setEvents((prevEvents) => 
-      prevEvents.map((ev) => (ev.id === event.id ? updatedEvent : ev))
-    );
   }
 
   const handleSummaryPanelClose = () => {
@@ -124,26 +170,66 @@ const AdminCalendar = ({
       setClickSummaryCard(false)
     }
     setTargetEvent(event)
+    console.log("handleEditEvent event: ", event);
+    console.log("handleEditEvent targetevent", targetEvent);
+    
     setEditMode(true);
     setOpenToolBar(true);
   }
 
-  const handleSaveEvent = (newEvent) => {
-    if (editMode) {
-      setEvents(
-        (prevEvents) => 
-          prevEvents.map((ev) => 
-            ev.id === newEvent.id ? newEvent : ev)
-      );
-    } else {
-      setEvents((prev) => [...prev, newEvent]);
-    }
-    setOpenToolBar(false);
-    setTargetEvent(null);
-    setEditMode(false);
-    setSelectedSlot(null);
-    setClickSummaryCard(false);
-  }
+  const handleSaveEvent = async (newEvent) => {
+    try {
+      const payload = {
+        day_type: newEvent.day_type,
+        room_id: newEvent.room_id,
+        mc_id: newEvent.mc_id,
+        pd_id: newEvent.pd_id,
+        session_start: format(newEvent.session_start, "yyyy-MM-dd'T'HH:mm:ss"),
+        session_end: format(newEvent.session_end,"yyyy-MM-dd'T'HH:mm:ss"),
+      }
+
+      if (editMode) {
+        console.log(payload);
+        
+        const response = await api.put(`/sessions/${newEvent.id}`, payload);
+
+        setEvents((prevEvents) => {
+          return prevEvents.map(
+            (ev) => ev.id === newEvent.id 
+            ? {...response.data, 
+                session_start: new Date(response.data.session_start),
+                session_end: new Date(response.data.session_end),
+                start: new Date(response.data.session_start),
+                end: new Date(response.data.session_end),
+              } 
+            : ev
+          )
+        });
+      } else {
+        console.log("handleSave data set:", payload);
+        const response = await api.post(`/sessions`, payload);
+        
+        setEvents((prev) => [
+          ...prev,
+          {...response.data,
+            session_start: new Date(response.data.session_start),
+            session_end: new Date(response.data.session_end),
+            start: new Date(response.data.session_start),
+            end: new Date(response.data.session_end),
+          }
+          
+          
+        ]);
+      };
+      setOpenToolBar(false);
+      setTargetEvent(null);
+      setEditMode(false);
+      setSelectedSlot(null);
+      setClickSummaryCard(false);
+    } catch (err) {
+      console.error("Unable to save event:", err);
+    };
+  };
 
   const handleModalClose = () => {
     setTargetEvent(null); 
@@ -160,17 +246,26 @@ const AdminCalendar = ({
 
   const handleSelectedSlot = (slotInfo) => {
     const verifyWorkingDate = checkDayOff(slotInfo.start, slotInfo.end)
+    console.log("verified date after select slot", verifyWorkingDate);
     
-      if(!verifyWorkingDate || clickSummaryCard) return;
-      console.log(verifyWorkingDate);
-      
-      setOpenToolBar(true)
-      setSelectedSlot(() => {
-        return {
-          start: verifyWorkingDate.start,
-          end: verifyWorkingDate.end,
-        }
-      }) 
+    
+      if(!verifyWorkingDate || clickSummaryCard) {
+        console.log(verifyWorkingDate);
+        return;
+      } 
+        // setOpenToolBar(true)
+        setSelectedSlot({
+            day_type: "",
+            room_id: "",
+            room_name: "",
+            mc_id: "",
+            mc_name: "",
+            pd_id: "",
+            pd_name: "",
+            start: verifyWorkingDate.start,
+            end: verifyWorkingDate.end,
+          });
+
   } 
 
   const handleSelectedEvent = (event) => {
@@ -185,6 +280,7 @@ const AdminCalendar = ({
     setClickSummaryCard(true)
     console.log(selectedSummaryTitle);
   }
+
   const handleSeeAllBtnClick = () => {
     setClickSeeAllBtn(true)
     setCurrentView("day")
@@ -210,7 +306,10 @@ const AdminCalendar = ({
 
           return {
             style: {
-              backgroundColor: roomColors[event.title?.toLowerCase()] || "#546e7a",
+              backgroundColor: 
+              event.day_type === "dayoff" || (!event.room_id && !event.mc_id && !event.pd_id)
+              ? "#ED3419"
+              : roomColors[event.room_name?.toLowerCase()] || "#546e7a",
               borderRadius: "6px",
               color: "#fff",
               border: "none",
@@ -235,7 +334,7 @@ const AdminCalendar = ({
              event: (props) => (
               currentView === "month"
               ? null
-              : <SessionCard event={props.event} view={currentView} allEvents={events} uSage={"admin"}/>
+              : <SessionCard event={props.event} view={currentView} allEvents={events}/>
           ),
           month: {
             dateHeader: (props) => (
@@ -244,7 +343,6 @@ const AdminCalendar = ({
                 events={events}
                 currentView={currentView}
                 onClick={handleClickedSummaryCard}
-                uSage={"admin"}
               />
             )
           }
@@ -275,12 +373,12 @@ const AdminCalendar = ({
           isOpen={openToolBar}
           events={events}
           existingEvent={editMode ? targetEvent : null}
-          selectRoom={editMode ? targetEvent.title : selectedSlot.title}
-          startSession={editMode ? targetEvent.start : selectedSlot.start}
-          endSession={editMode ? targetEvent.end : selectedSlot.end}
-          mcName={editMode ? targetEvent.mc : selectedSlot.mc}
-          pdName={editMode ? targetEvent.pd : selectedSlot.pd}
-          dayType={editMode ? targetEvent.type : selectedSlot.type}
+          selectRoom={editMode ? targetEvent.room_name : selectedSlot.room_name}
+          sessionStart={editMode ? targetEvent.session_start : selectedSlot.start}
+          sessionEnd={editMode ? targetEvent.session_end : selectedSlot.end}
+          mcName={editMode ? targetEvent.mc_name : selectedSlot.mc_name}
+          pdName={editMode ? targetEvent.pd_name : selectedSlot.pd_name}
+          dayType={editMode ? targetEvent.day_type : selectedSlot.day_type}
           isEditMode={editMode}
           validateSession={validateSession}
           getWorkForceHours={getWorkForceHours}
@@ -300,7 +398,7 @@ const AdminCalendar = ({
             prevEvents.filter((ev) => ev.id !== event.id)
           );
         }}
-        events={events.filter((ev => ev.start.toDateString() === selectedSummaryDate.toDateString()))}
+        events={events.filter((ev => new Date(ev.start).toDateString() === selectedSummaryDate.toDateString()))}
         isClickSummaryCard={clickSummaryCard}
         setClickSeeAllBtn={handleSeeAllBtnClick}
       />

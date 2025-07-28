@@ -16,6 +16,7 @@ export async function getAllPersonnel(req, res) {
                 psn.max_hours,
                 psn.created_at,
                 psn.updated_at,
+                pos.id AS position_id,
                 pos.position AS position_name
             FROM personnels psn
             LEFT JOIN positions pos
@@ -148,8 +149,9 @@ export async function createPersonnel(req, res) {
     }
 }
 
-// PUT /api/personnel/:id
+// PUT /api/personnels/:id
 export async function updatePersonnel(req, res) {
+    
     try {
         const { id } = req.params;
         const {
@@ -164,6 +166,8 @@ export async function updatePersonnel(req, res) {
             max_hours,
         } = req.body;
 
+        console.log("check req.body",req.body);
+        
         const result = await pool.query(
             `UPDATE personnels
             SET
@@ -180,11 +184,36 @@ export async function updatePersonnel(req, res) {
             WHERE id = $10
             RETURNING id`
             ,[fName, lName, nickname, color, position_id, employment_type, status, kpi_hours, max_hours, id]);
-
+        
         if(result.rowCount === 0) {
             return res.status(404).json({error: "Target personnel not found"});
         }
-        res.status(200).json({message: "Personnel data updated successfully"});
+
+        const updatedPersonnelID = result.rows[0].id
+
+        const updatedPersonnel = await pool.query(
+            `SELECT
+                psn.id AS personnel_id,
+                psn.f_name,
+                psn.l_name,
+                psn.nickname,
+                psn.color,
+                psn.employment_type,
+                psn.status,
+                psn.kpi_hours,
+                psn.max_hours,
+                psn.created_at,
+                psn.updated_at,
+                pos.id AS position_id,
+                pos.position AS position_name
+            FROM personnels psn
+            LEFT JOIN positions pos
+                ON psn.position_id = pos.id
+            WHERE psn.id = $1
+            ORDER BY psn.id ASC`
+            ,[updatedPersonnelID]);
+
+        res.status(200).json(updatedPersonnel.rows[0]);
 
     } catch (err) {
         console.log(err);
@@ -196,6 +225,8 @@ export async function updatePersonnel(req, res) {
 export async function deletePersonnel(req, res) {
     try {
         const { id } = req.params;
+        console.log("confirmed delete id", id);
+        
         const result = await pool.query(
             `DELETE from personnels
             WHERE id = $1

@@ -9,6 +9,7 @@ router
     .get("/:id", ctrl.getSessionById)
     .post("/", ctrl.createSession)
     .put("/:id", ctrl.updateSession)
+    .patch("/:id", ctrl.updateSession)
     .delete("/:id", ctrl.deleteSession);
 
 export default router;

@@ -7,15 +7,22 @@ export async function getAllDayOffs(req, res) {
             `SELECT
                 pdo.id,
                 pdo.personnel_id,
+                psn.nickname AS requester_name,
                 pdo.dayoff_start,
                 pdo.dayoff_end,
                 pdo.is_urgent,
                 pdo.reason,
                 pdo.dayoff_status,
+                pdo.position_id,
+                pos.position AS position_name,
                 pdo.created_at,
                 pdo.updated_at
             FROM personal_dayoffs pdo 
-            ORDER BY pdo.dayoff_start ASC`)
+            LEFT JOIN personnels psn
+                ON pdo.personnel_id = psn.id
+            LEFT JOIN positions pos
+                ON pdo.position_id = pos.id
+            ORDER BY pdo.id ASC`)
         const dayOffs = result.rows;
         res.status(200).json(dayOffs);
     } catch (err) {
@@ -64,18 +71,19 @@ export async function createDayOff(req, res) {
             dayoff_end, 
             is_urgent, 
             reason, 
+            dayoff_status,
         } = req.body;
 
         const result = await pool.query(`
             INSERT INTO personal_dayoffs
-            (personnel_id, position_id, dayoff_start, dayoff_end, is_urgent, reason)
+            (personnel_id, position_id, dayoff_start, dayoff_end, is_urgent, reason, dayoff_status)
 
             VALUES
-            ($1, $2, $3, $4, $5, $6)
+            ($1, $2, $3, $4, $5, $6, $7)
 
             RETURNING
-            id, personnel_id, position_id, dayoff_start, dayoff_end, is_urgent, reason, created_at, updated_at`
-            ,[requester_id, position_id, dayoff_start, dayoff_end, is_urgent, reason]);
+            id, personnel_id, position_id, dayoff_start, dayoff_end, is_urgent, reason, dayoff_status, created_at, updated_at`
+            ,[requester_id, position_id, dayoff_start, dayoff_end, is_urgent, reason, dayoff_status]);
 
             res.status(201).json(result.rows[0]);        
     } catch (err) {

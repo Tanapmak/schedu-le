@@ -8,10 +8,10 @@ const roomColors = {
   lazada: "#4979D2",
   shopee: "#DD6E00",
   "content room": "#A149FF",
-  "day off": "#ED3419",
+  "Day off": "#ED3419",
 }
 
-const SummaryDateHeader = ({ onClick, label, date, events, currentView, uSage }) => {
+const SummaryDateHeader = ({ onClick, label, date, events, currentView }) => {
   if(currentView !== "month") return <span>{label}</span>
 
   const eventsForDay = events.filter(ev =>
@@ -20,7 +20,9 @@ const SummaryDateHeader = ({ onClick, label, date, events, currentView, uSage })
 
   const summary = {};
   eventsForDay.forEach(event => {
-    const room = event.title?.toLowerCase() || "Unknown";
+    const room = event.day_type === "dayoff" || (!event.room_id && !event.mc_id && !event.pd_id) 
+    ? "Day off" 
+    : event.room_name?.toLowerCase() || "Unknown";
     const duration = (event.end - event.start) / (1000 * 60 * 60); 
 
     summary[room] = (summary[room] || 0) + duration;
@@ -38,7 +40,7 @@ const SummaryDateHeader = ({ onClick, label, date, events, currentView, uSage })
     }}>
         <span style={{
             fontSize: "0.75rem",
-            fontWeight: 600,
+            fontWeight: 400,
         }}>
             {label}
         </span>
@@ -46,7 +48,8 @@ const SummaryDateHeader = ({ onClick, label, date, events, currentView, uSage })
         <div 
           key={room} 
           style={{
-            backgroundColor: roomColors[room] || "#ccc",
+            backgroundColor: 
+            roomColors[room] || "#ccc",
             color: "#FFF",
             borderRadius: "3px",
             fontSize: "0.7rem",

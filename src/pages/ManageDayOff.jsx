@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import api from "../api.js";
 import "../styles/manage-day-off.css"
 
 const ManageDayOff = () => {
@@ -7,65 +8,85 @@ const ManageDayOff = () => {
     const [isRejected, setReject] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
 
-    const [approveRequestList, setApproveRequest] = useState([{
-    id: 1,
-    user: "mc-a",
-    position: "mc",
-    start: new Date("2025-07-15"),
-    end: new Date("2025-07-15"),
-    type: "normal",
-    reason: "",
-    status: "pending",
-  },
-{
-    id: 2,
-    user: "mc-b",
-    position: "mc",
-    start: new Date("2025-07-15"),
-    end: new Date("2025-07-15"),
-    type: "normal",
-    reason: "",
-    status: "pending",
-  }]);
+    const [listForApprove, setListForApprove] = useState([]);
 
-    const handleApprove = (id) => {
-        setApprove(true);
-        setApproveRequest((prev) => 
-            prev.map((request) => 
-                request.id === id? { ...request, status: "approved"} : request    
-            )
-        );
-        console.log("successfully approve"); 
+  const fetchDayoffRequestList = async () => {
+    try {
+        const result = await api.get("/dayoffs");
+        console.log("raw dayoff list data:", result.data);
+        setListForApprove(result.data)
+    } catch (err) {
+       console.error("Error fetching request list", err);
+    }
+  }
+
+  useEffect(() => {
+    fetchDayoffRequestList();
+  },[])
+
+    const handleApprove = async (id) => {
+        try {
+            setApprove(true);
+            await api.patch(`/dayoffs/${id}`, {dayoff_status: "approved"});
+
+            fetchDayoffRequestList();
+            
+            console.log("successfully approve"); 
+        } catch (err) {
+            console.error("Error approve dayoff", err);
+        }
     };
 
-    const handleReject = (id) => {
-        setReject(true);
-        setApproveRequest((prev) => 
-            prev.map((request) => 
-                request.id === id? { ...request, status: "rejected"} : request    
-            )
-        );
-        console.log("succesfully reject request"); 
+    const handleReject = async (id) => {
+        try {
+            setReject(true);
+            const response = await api.patch(`/dayoffs/${id}`, {dayoff_status: "rejected"});
+            setSelectedIds((prev) => prev.filter((selectID) => selectID !== id));
+            fetchDayoffRequestList();
+            console.log("succesfully reject request"); 
+        } catch (err) {
+            console.error("Error reject dayoff");
+        }
     };
 
     const handleSelectAll = () => {
-        const allIds = approveRequestList.map((request) => request.id);
-        if(selectedIds.length === approveRequestList.length) {
+        const allIds = listForApprove
+        .filter((request) => request.dayoff_status === "pending")
+        .map((request) => request.id);
+        
+        if(selectedIds.length > 0) {
             setSelectedIds([]);
         } else {
             setSelectedIds(allIds);
         }
     }
 
-    const handleApproveAll = () => {
-        setApproveRequest((prev) => 
-            prev.map((request) => 
-                selectedIds.includes(request.id) && request.status === "pending"
-                ? { ...request, status: "approved"}
-                : request
-            )
-        );
-        setSelectedIds([]);
+    const handleApproveAll = async () => {
+        if (selectedIds.length === 0) {
+                alert("Please select the request first")
+                return;
+        }
+
+        try {
+            await Promise.all(
+                selectedIds.map((id) => {
+                        const request = listForApprove.find((r) => r.id === id);
+                        if (request && request.dayoff_status === "pending") {
+                            return api.patch(`/dayoffs/${id}`, {dayoff_status: "approved"});
+                        } else {
+                            return Promise.resolve();
+                        }   
+                    }
+                )
+            );
+
+            fetchDayoffRequestList();
+            setSelectedIds([]); 
+            console.log("All selected request approved");
+            
+        } catch (err) {
+            console.error("Error approve all", err);
+        }
     }
 
     const handleSelectOne = (id) => {
@@ -110,7 +131,7 @@ const ManageDayOff = () => {
                         <h2>manage day off</h2>
                         <div className="page-title-btn-group">
                             <button className="select-all-btn" onClick={handleSelectAll}>
-                                {selectedIds.length === approveRequestList.length ? "deselect all" : "select all"}
+                                {selectedIds.length > 0 ? "deselect all" : "select all"}
                             </button>
                             <button className="approve-all-btn" onClick={handleApproveAll}>approve all</button>
                         </div>
@@ -135,10 +156,10 @@ const ManageDayOff = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                            {approveRequestList.map((request) => {
+                            {listForApprove.map((request) => {
                                 const isSelected = selectedIds.includes(request.id);
-                                const isApproved = request.status === "approved";
-                                const isRejected = request.status === "rejected"
+                                const isApproved = request.dayoff_status === "approved";
+                                const isRejected = request.dayoff_status === "rejected"
                                 return (
                                 <tr key={request.id}>
                                         <input 
@@ -147,17 +168,17 @@ const ManageDayOff = () => {
                                         disabled={isApproved || isRejected}
                                         onChange={()=>handleSelectOne(request.id)}
                                         />
-                                        <td>{request.start.toLocaleDateString()}</td>
-                                        <td>{request.end.toLocaleDateString()}</td>
-                                        <td>{request.user}</td>
+                                        <td>{new Date(request.dayoff_start).toLocaleDateString()}</td>
+                                        <td>{new Date(request.dayoff_end).toLocaleDateString()}</td>
+                                        <td>{request.requester_name}</td>
                                         <td>
                                             {Math.ceil(
-                                                (new Date(request.end) - new Date(request.start)) / (1000 * 60 * 60 * 24)
+                                                (new Date(request.dayoff_end) - new Date(request.dayoff_start)) / (1000 * 60 * 60 * 24)
                                                 ) + 1} day
                                         </td>
-                                        <td>{request.type}</td>
-                                        <td>{request.reason}</td>
-                                        <td style={setCustomStatusStyle(request.status)}>{request.status}</td>
+                                        <td>{request.is_urgent === true ? "Urgent" : "Normal"}</td>
+                                        <td>{request.reason ? request.reason : "Normal dayoff"}</td>
+                                        <td style={setCustomStatusStyle(request.dayoff_status)}>{request.dayoff_status}</td>
                                         <td className="dayoff-btn-group">
                                             {isApproved ? (
                                                 <button className="btn status-btn" disabled>already approved</button>

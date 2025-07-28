@@ -28,6 +28,21 @@ const UserCalendar = ({currentView, setCurrentView, events}) => {
       <Calendar
         localizer={localizer}
         events={events}
+        eventPropGetter={(event) => {
+          const backupColor = "#546e7a";
+          const isDayOff = event.day_type === "dayoff" || (!event.room_id && !event.mc_id && !event.pd_id)
+          const bgColor = isDayOff ? "#ED3419" : event.color || backupColor;
+
+          return {
+            style: {
+              backgroundColor: bgColor,
+              borderRadius: "6px",
+              color: "#fff",
+              border: "none",
+              padding: "4px",
+            },
+          };
+        }}
         startAccessor="start"
         endAccessor="end"
         view={currentView}

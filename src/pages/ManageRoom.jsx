@@ -1,5 +1,6 @@
 import React from "react";
 import { useState, useEffect } from "react";
+import api from "../api";
 import "../styles/manage-room.css"
 
 const ManageRoom = () => {
@@ -11,12 +12,37 @@ const ManageRoom = () => {
     const [editRoomId, setEditRoomId] = useState(null);
     const [editRoomName, setEditRoomName] = useState("");
 
-    const handleAddRoom = (e) => {
-        e.preventDefault();
-        if(inputRoom.trim() === "") return;
+    const fetchRoomData = async () => {
+        try {
+            const result = await api.get("/rooms");
+            setRoomList(result.data);
+        } catch (err) {
+            console.error("Error fetching room data", err);     
+        }   
+    }
+        
+    useEffect(() => {
+        fetchRoomData();
+    },[]);
 
-        setRoomList((prev) => [...prev, {id: Date.now(), name: inputRoom}]);
-        setInputRoom("");
+    const handleAddRoom = async (e) => {
+        e.preventDefault();
+        const payload = {
+            name: inputRoom,
+        }
+        console.log("room data to submit", payload);
+
+        try {
+            if(inputRoom.trim() === "") return;
+            await api.post("/rooms", payload)
+            console.log("Created room :", payload);
+        
+            fetchRoomData();
+            setInputRoom("");
+        } catch (err) {
+            console.error("Error create room", err);
+        }
+
     }
 
     const handleEditRoom = (room) => {
@@ -24,14 +50,26 @@ const ManageRoom = () => {
         setEditRoomName(room.name);
     }
 
-    const handleSaveEdit = () => {
-        setRoomList((prevRoomList) => 
-            prevRoomList.map((room) => 
-                room.id === editRoomId ? {...room, name: editRoomName } : room
-            )
-        );
-        setEditRoomId(null);
-        setEditRoomName("");
+    const handleSaveEdit = async () => {
+        if(editRoomName.trim() === "") return;
+        
+        try {
+            const payload = {
+                name: editRoomName,
+            }
+            await api.put(`/rooms/${editRoomId}`, payload);
+            
+            setRoomList((prevRoomList) => 
+                prevRoomList.map((room) => 
+                    room.id === editRoomId ? {...room, name: editRoomName } : room
+                )
+            );
+
+            setEditRoomId(null);
+            setEditRoomName("");
+        } catch (err) {
+            console.error("Error updating room", err);
+        }
     }
 
     const handleCancelEdit = () => {
@@ -43,10 +81,17 @@ const ManageRoom = () => {
         setInputRoom(event.target.value);
     }
 
-    const handleDeleteRoom = (id) => {
-        setRoomList((prevRoom) => {
-            return prevRoom.filter((room) => room.id !== id)
-        })
+    const handleDeleteRoom = async (id) => {
+        const confirmDelete = window.confirm("Are you sure you want to delete this room?");
+        if (!confirmDelete) return;
+        
+        try {
+            await api.delete(`/rooms/${id}`)
+            await fetchRoomData();          
+        } catch (err) {
+            console.error("Error delete room", err);
+        }
+
     }
 
     return(
@@ -65,6 +110,7 @@ const ManageRoom = () => {
                 <form className="add-room-input-container">
                     <input 
                     type="text" 
+                    name="roomName"
                     className="addroom-input-box" 
                     placeholder="Enter room name to add room"
                     onChange={handleInputChange}
@@ -80,6 +126,7 @@ const ManageRoom = () => {
                                     <>
                                         <input
                                             type="text"
+                                            name="editRoomName"
                                             value={editRoomName}
                                             onChange={(e) => setEditRoomName(e.target.value)}
                                             className="edit-room-input"

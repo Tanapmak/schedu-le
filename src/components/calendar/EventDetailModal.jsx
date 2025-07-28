@@ -9,7 +9,7 @@ const EventDetailModal = ({isClickSummaryCard, event, onClose, onEdit, onDelete}
             <div className="event-modal-content">
                 <div className="event-details">
                     <div className="headers">
-                        <h3>{event.title}</h3>
+                        <h3>{event.day_type === "dayoff" ? "Day off" : event.room_name}</h3>
                         {isClickSummaryCard ? null :
                             <div className="modal-close-btn" onClick={onClose}>
                                 <i className="fa-solid fa-xmark"></i>
@@ -17,7 +17,11 @@ const EventDetailModal = ({isClickSummaryCard, event, onClose, onEdit, onDelete}
                         }
 
                     </div>
-                    <p>{event.mc} / {event.pd}</p>
+                    <p>{event.day_type === "dayoff" 
+                    ? "All MC" 
+                    : event.mc_name} / {event.day_type === "dayoff" 
+                    ? "All PD" 
+                    : event.pd_name}</p>
                     <p>date: {event.start.toLocaleDateString("en-GB")}</p>
                     <p>
                         {event.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 

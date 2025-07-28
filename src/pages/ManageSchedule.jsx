@@ -20,8 +20,8 @@ export default function ManageSchedule() {
     const [roomList, setRoomList] = useState([]);
 
     // Form & selection states
-    const [openForm, setOpenForm] = useState(false);
-    const [isEditMode, setIsEditMode] = useState(false);
+    const [openToolBar, setOpenToolBar] = useState(false);
+    const [editMode, setEditMode] = useState(false);
     const [targetEvent, setTargetEvent] = useState(null);
     const [selectedSlot, setSelectedSlot] = useState({});
 
@@ -29,6 +29,26 @@ export default function ManageSchedule() {
     const [isClickDayOff, setClickDayOff] = useState(false);
     const [isDayOffDate, setDayOffDate] = useState(false);
     
+    useEffect(() => {
+        const fetchSessionData = async () => {
+            try {
+                const result = await api.get("/sessions");
+                console.log("raw API result:", result.data);
+                const mappedDateSession = result.data.map((session) => ({
+                    ...session,
+                    start: new Date(session.session_start),
+                    end: new Date(session.session_end),
+                }))
+                setEvents(mappedDateSession);
+                console.log("fetch data result:", mappedDateSession);
+                console.log("event data result:", events);
+                 
+            } catch (err) {
+                console.error(err);   
+            }
+        };
+        fetchSessionData();
+    }, []);
 
     const getWorkForceHours = (start, end) => (new Date(end) - new Date(start)) / (1000 * 60 * 60)
     
@@ -130,8 +150,6 @@ export default function ManageSchedule() {
                     setEditMode={setEditMode}
                     events={events}
                     setEvents={setEvents}
-                    selectedEvent={selectedEvent}
-                    setSelectedEvent={setSelectedEvent}
                     selectedSlot={selectedSlot}
                     setSelectedSlot={setSelectedSlot}
                     validateSession={validateSession}
