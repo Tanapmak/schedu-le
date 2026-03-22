@@ -24,21 +24,6 @@ Backend
 
 ---------------------------
 
-📂 Project Structure
-Plaintext
-├── backend/
-│   └── src/
-│       ├── routes/      # API Route definitions (Sessions, Dayoffs, etc.)
-│       └── server.js    # Express server entry point
-├── src/
-│   ├── components/      # UI Components (Calendar, Forms, Layout)
-│   ├── pages/           # Page views (Home, Manage Schedule, etc.)
-│   ├── styles/          # Modular CSS files
-│   └── App.jsx          # Main application component
-└── package.json         # Project dependencies and scripts
-
----------------------------
-
 ⌨️ Development Setup
 
 1. Backend Setup
