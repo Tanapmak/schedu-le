@@ -7,6 +7,7 @@ import sessionRouter from './routes/session.js';
 import personnelRouter from './routes/personnel.js';
 import dayoffRouter from './routes/dayoff.js';
 import roomRouter from './routes/room.js';
+import summaryRouter from './routes/summary.js';
 
 dotenv.config();
 const app = express();
@@ -24,6 +25,7 @@ app.use("/api/sessions", sessionRouter);
 app.use("/api/personnels", personnelRouter);
 app.use("/api/dayoffs", dayoffRouter);
 app.use("/api/rooms", roomRouter);
+app.use("/api/summary", summaryRouter);
 
 const PORT = process.env.PORT || 3000;
 

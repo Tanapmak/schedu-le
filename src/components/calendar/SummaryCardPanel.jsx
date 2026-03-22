@@ -20,7 +20,7 @@ const SummaryCardPanel = ({isClickSummaryCard, onClose, onEdit, onDelete, events
                         event={event}
                         onClose={onClose}
                         onEdit={()=>onEdit(event)}
-                        onDelete={onDelete}
+                        onDelete={()=>onDelete(event)}
                         isClickSummaryCard={isClickSummaryCard}
                     />
                 ))}

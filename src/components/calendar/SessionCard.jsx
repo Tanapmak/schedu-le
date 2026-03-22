@@ -38,8 +38,8 @@ const SessionCard = ({ event, view ,allEvents}) => {
       <strong>{event.room_name || "Day off"}</strong><br />
       {event.mc_name || "All MC"} / {event.pd_name || "All PD"}<br />
       <span style={{ fontSize: '0.7rem', color: '#f0f0f0' }}>
-        {startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - 
-        {endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {startTime.toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' })} - 
+        {endTime.toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' })}
       </span>
     </div>
   );

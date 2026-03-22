@@ -14,12 +14,13 @@ const AddSessionForm = ({
     mcName, 
     pdName, 
     isEditMode,
-    validateSession,
     onClose, 
     onSave,  
     dayType,   
     isClickDayOff, 
     isHolidayDate,
+    formErrors,
+    setFormErrors,
 }) => {
     
     const [formData, setFormData] = useState({
@@ -32,8 +33,6 @@ const AddSessionForm = ({
         session_start: null,
         session_end: null,
     })
-
-    const [validationErrors, setValidationErrors] = useState([]);
 
     useEffect(() => {
         if (isEditMode && existingEvent) {
@@ -61,24 +60,6 @@ const AddSessionForm = ({
             );
         }
     }, [isEditMode, existingEvent, sessionStart, sessionEnd, selectRoom, mcName, pdName, dayType]);
-
-    const getWorkForceHours = (start, end) => (new Date(end) - new Date(start)) / (1000 * 60 * 60)
-
-    const calculatePersonHours = (name, description) => {
-        if (!name) return 0;
-        const filtered = events.filter(ev => ev[description] === name && ev.id !== formData.id && ev.title?.toLowerCase() !== "content room");
-        return filtered.reduce((total, ev) => total + getWorkForceHours(ev.start, ev.end), 0);
-    };
-
-    const calculateRoomHours = (room) => {
-        if(!room) return 0;
-        if(room === "day off" || room === "content room") return 0;
-        const totalHours = events.reduce((total, ev) => total + getWorkForceHours(ev.start, ev.end),0)
-        return totalHours
-    }
-    // const mcList = ["Newyear", "Petch", "Ponz", "Chani", "Nooknick", "Aomkuan"]; 
-    // const pdList = ["Zone", "Tongvha", "Non", "Fourarm"];
-    // const roomList = ["TikTok 1", "TikTok 2", "Lazada", "Shopee"];
     
     const [mcList, setMcList] = useState([]);
     const [pdList, setPdList] = useState([]);
@@ -167,25 +148,17 @@ const AddSessionForm = ({
             room_id: formData.room_id,
             mc_id: formData.mc_id,
             pd_id: formData.pd_id,
-            session_start: formData.session_start,
-            session_end: formData.session_end,
+            session_start: new Date(formData.session_start).toLocaleString(),
+            session_end: new Date(formData.session_end).toLocaleString(),
         };
 
         console.log("New event data from addsessionform handleSubmit",newEvent);
-        
 
-        const errors = validateSession(newEvent);
-
-        if(errors.length > 0) {
-            setValidationErrors(errors);
-            return;
-        }
-
-        setValidationErrors([]);
+        setFormErrors([]);
         console.log(newEvent.day_type);
         
         onSave(newEvent);
-        onClose();
+        // onClose();
     };
 
     return(
@@ -277,11 +250,11 @@ const AddSessionForm = ({
                         dateFormat="dd/mm/yyyy"
                     /> 
                 <br />
-                {validationErrors.length > 0 &&
+                {formErrors.length > 0 &&
                     <div className="session-validation-container">
-                        <h5>Duplicate Session!</h5>
+                        <h5>System Validation Error!</h5>
                         <ul>
-                        {validationErrors.map((err, i) => {
+                        {formErrors.map((err, i) => {
                             return(
                                 <li key={i}>{err}</li>
                             );

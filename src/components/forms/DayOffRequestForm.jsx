@@ -4,7 +4,18 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import "../../styles/dayoff-request-form.css"
 
-const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest, clickRequest, clickEdit, selectedDayOff, setSelectedDayOff, validateDayOffCount}) => {
+const DayOffRequestForm = ({
+    personnelList, 
+    handleRequestDayOff, 
+    setClickRequest, 
+    clickRequest, 
+    clickEdit, 
+    setEditForm,
+    selectedDayOff, 
+    setSelectedDayOff, 
+    formErrors,
+    setFormErrors,
+}) => {
 
     const [currentDate, setDate] = useState({
         startDate: new Date(),
@@ -22,7 +33,7 @@ const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest,
         end: currentDate.end,
         type: "normal",
         isUrgent: false,
-        reason: "",
+        reason: "normal day off",
         status: "pending",
     });
 
@@ -44,27 +55,32 @@ const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest,
             startDate: new Date(selectedDayOff.dayoff_start),
             endDate: new Date(selectedDayOff.dayoff_end),
             });
+            setUrgentDayOff(selectedDayOff.is_urgent || false);
+        } else {
+            setDayOffFormData({
+                user: "",
+                userID: "",
+                position: "",
+                positionID: "",
+                type: "normal",
+                isUrgent: false,
+                reason: "normal dayoff",
+                status: "pending",
+            })
         }
-        
     }, [clickEdit, selectedDayOff]);
 
     const handleClose = () => {
         setClickRequest(false);
+        setEditForm(false);
         setUrgentDayOff(false);
+        setFormErrors([]);
     }
 
     const handleSubmit = (event) => {
         event.preventDefault(); // Prevent the default form submission (page reload)
-        console.log("Dayoff form data:", dayOffFormData); // For debugging
-        if (!isUrgentDayOff) {
-            const conflict = validateDayOffCount(
-                currentDate.startDate, currentDate.endDate, dayOffFormData.position
-            );
-                if (conflict) {
-                    alert("Sorry, max leave limit, please tick urgent box and provide reason.");
-                    return;
-                }
-        }
+        console.log("Submitted Dayoff form data:", dayOffFormData); // For debugging
+
         const finalData = {
             ...dayOffFormData,
             id: dayOffFormData.id || Date.now(),
@@ -72,27 +88,13 @@ const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest,
             type: dayOffFormData.type,
             isUrgent: dayOffFormData.isUrgent,
             reason: dayOffFormData.reason,
-            start: currentDate.startDate,
-            end: currentDate.endDate,
+            start: new Date(currentDate.startDate).toLocaleString(),
+            end: new Date(currentDate.endDate).toLocaleString(),
         };
         console.log("Dayoff form data to submit", finalData);
         
         handleRequestDayOff(finalData); // Pass the collected data to the parent
-        // Optional: Reset form fields after submission
-
-        setDayOffFormData({
-            user: null,
-            position: null,
-            start: new Date(),
-            end: new Date(),
-            type: "normal",
-            reason: "normal day off",
-        });
-        setDate({ // Also reset DatePicker dates
-            startDate: new Date(),
-            endDate: new Date(),
-        });
-        setUrgentDayOff(false);
+            // Optional: Reset form fields after submission
     };
     
     return (
@@ -163,13 +165,15 @@ const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest,
                      <input 
                      type="checkbox" 
                      checked={isUrgentDayOff}
+                     placeholder="Please provide urgent reason"
                      onChange={(e)=> {
                         const isChecked = e.target.checked;
                         setUrgentDayOff(isChecked)
                         setDayOffFormData(prev => ({
                             ...prev,
                             type: isChecked ? "urgent" : "normal",
-                            isUrgent: true,
+                            isUrgent: isChecked,
+                            reason: "",
                         }))
                         console.log(isUrgentDayOff);   
                      }}
@@ -188,6 +192,26 @@ const DayOffRequestForm = ({personnelList, handleRequestDayOff, setClickRequest,
                 (<p style={{color: "red", fontSize: "0.7rem"}}>* Please provide reason *</p>)
                 }
             </div>
+            {formErrors.length > 0 && 
+            <div className="error-msg-container">
+                <h5 style={{color: "#ff5d5d"}}>Request denial reason</h5>
+                
+                    {formErrors.map((err, i) => {
+                        return(
+                            <p style={{
+                                    fontSize: "0.7rem", 
+                                    color: "#ff5d5d",
+                                    paddingInlineStart: "0",
+                                    paddingInline: "1px",
+                                    paddingTop: "10px"
+                                }} 
+                                key={i}
+                            >{err}</p>
+                        );
+                    })}
+                
+            </div>
+             }
             <div className="dayoff-form-btn-group">
                 <button 
                     className="submit-btn" 

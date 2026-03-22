@@ -10,6 +10,7 @@ const MyDayOff = () => {
     const [clickEdit, setEditForm] = useState(false);
     const [selectedDayOff, setSelectedDayOff] = useState(null);
     const [personnelList, setPersonelList] = useState([]);
+    const [formErrors, setFormErrors] = useState([]);
 
     const fetchPersonnelData = async () => {
         try {
@@ -40,8 +41,8 @@ const MyDayOff = () => {
         const payload = {
             requester_id: dayOffData.userID,
             position_id: dayOffData.positionID,
-            dayoff_start: format(dayOffData.start, "yyyy-MM-dd'T'HH:mm:ss"),
-            dayoff_end: format(dayOffData.end, "yyyy-MM-dd'T'HH:mm:ss"),
+            dayoff_start: new Date(dayOffData.start).toISOString(),
+            dayoff_end: new Date(dayOffData.end).toISOString(),
             is_urgent: dayOffData.isUrgent,
             reason: dayOffData.reason,
             dayoff_status: dayOffData.status,
@@ -53,16 +54,23 @@ const MyDayOff = () => {
                 console.log("updated dayoff submitted");
                 await api.put(`/dayoffs/${dayOffData.id}`, payload);
                 fetchDayoffList();
-                setEditForm(false);
-                setSelectedDayOff(null);
             } else {
                 console.log("created dayoff");
                 await api.post("/dayoffs", payload);
                 fetchDayoffList();
             }
             setClickRequest(false);
+            setEditForm(false);
+            setSelectedDayOff(null)
+            setFormErrors([]);
         } catch (err) {
             console.error("Error creating dayoff request", err);
+            if(err.response?.data?.error) {
+                const error = err.response.data.error
+                setFormErrors(Array.isArray(error) ? error : [error]);
+            } else {
+                setFormErrors("Unknown error occurred")
+            }
         }
     }
 
@@ -75,39 +83,6 @@ const MyDayOff = () => {
         setEditForm(true);
         setClickRequest(true);
     }
-
-    // ช่วยเปรียบเทียบว่า date อยู่ในช่วง start ถึง end หรือไม่
-    const isDateInRange = (date, start, end) => {
-        const d = new Date(date).setHours(0, 0, 0, 0);
-        const s = new Date(start).setHours(0, 0, 0, 0);
-        const e = new Date(end).setHours(0, 0, 0, 0);
-        return d >= s && d <= e;
-    };
-
-    // คืนวันที่ทั้งหมดในช่วง start ถึง end (รวมทั้งสองฝั่ง)
-    const getDateRange = (start, end) => {
-        const range = [];
-        const current = new Date(start);
-        while (current <= new Date(end)) {
-            range.push(new Date(current));
-            current.setDate(current.getDate() + 1);
-        }
-        return range;
-    };
-
-    // นับจำนวนคนที่ลาใน "วันนั้น" และ "ตำแหน่งเดียวกัน"
-    const countDayOffs = (date, position) => {
-        return dayOffList.filter(item =>
-            item.position === position &&
-            isDateInRange(date, item.start, item.end)
-        ).length;
-    };
-
-    // ใช้ในตอน validate: ถ้าในช่วงวันลา มีวันไหนที่มีคนลาครบแล้ว (>=2) → return true
-    const hasConflictInRange = (start, end, position) => {
-        const dates = getDateRange(start, end);
-        return dates.some(date => countDayOffs(date, position) >= 2);
-    };
 
     const handleDelete = async (id) => {
         const confirmDelete = window.confirm("Are you sure you want to delete this request?");
@@ -123,6 +98,29 @@ const MyDayOff = () => {
         }
     };
 
+    const setCustomStatusStyle = (status) => {
+        switch (status) {
+            case "approved":
+                return {
+                    color: "#219800",
+                    fontWeight: "600",
+                }
+            case "rejected":
+                return {
+                    color: "#980000",
+                    fontWeight: "600",
+                }
+            case "pending":
+                return {
+                    color: "#e6b801",
+                    fontWeight: "600",
+                }
+        
+            default:
+                break;
+        }
+    }
+
     return(
         <div className="main-container">
             <div className="header-container">
@@ -133,11 +131,12 @@ const MyDayOff = () => {
                     <div className="page-title">
                         <h2>my day-off list</h2>
                     </div>
+                    <button className="request-dayoff-btn" onClick={handleClickRequest}>request day off</button>
                 </div>
             </div>
             <div className={`table-main-container ${clickRequest ? "open" : ""}`}>
                 <div className={`dayofflist-table ${clickRequest ? "open" : ""}`}>
-                    <button className="request-dayoff-btn" onClick={handleClickRequest}>request day off</button>
+                    
                         <table className="dayoff-table">
                             <thead>
                                 <tr>
@@ -166,11 +165,20 @@ const MyDayOff = () => {
                                         </td>
                                         <td>{request.type === "urgent" ? "Urgent" : "Normal"}</td>
                                         <td>{request.reason}</td>
-                                        <td>{request.dayoff_status}</td>
+                                        <td style={setCustomStatusStyle(request.dayoff_status)}>{request.dayoff_status}</td>
+                                        {request.dayoff_status === "pending" 
+                                        ?
                                         <td className="dayoff-btn-group">
                                             <button className="btn dayoff-edit-btn" onClick={()=>handleEdit(request)}>edit</button>
                                             <button className="btn dayoff-delete-btn" onClick={() => handleDelete(request.id)}>delete</button>
-                                        </td>
+                                        </td> 
+                                        :
+                                        <td className="dayoff-btn-group">
+                                            <button style={{backgroundColor: "#ccc"}} className="btn dayoff-edit-btn" disabled>edit</button>
+                                            <button style={{backgroundColor: "#ccc"}} className="btn dayoff-delete-btn" disabled>delete</button>
+                                        </td> 
+                                        }
+                                        
                                     </tr>
                                 )) 
                             ) : (
@@ -189,12 +197,12 @@ const MyDayOff = () => {
                             setClickRequest={setClickRequest}
                             clickRequest={clickRequest}
                             clickEdit={clickEdit}
+                            setEditForm={setEditForm}
                             selectedDayOff={selectedDayOff}
                             setSelectedDayOff={setSelectedDayOff}
-                            validateDayOffCount={(start, end, position) =>
-                                hasConflictInRange(start, end, position)
-                            }
                             personnelList={personnelList}
+                            formErrors={formErrors}
+                            setFormErrors={setFormErrors}
                             />
                         </div>
                     }

@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { startOfMonth, endOfMonth } from "date-fns";
 import api from "../api.js";
 import "../styles/manage-schedule.css"
 import AdminCalendar from "../components/calendar/AdminCalendar";
-import AddSessionForm from "../components/forms/AddSessionForm";
-import SessionCard from "../components/calendar/SessionCard";
-import EventDetailModal from "../components/calendar/EventDetailModal";
-import SummaryDateHeader from "../components/calendar/SummaryDateHeader";
 
 export default function ManageSchedule() {
     // Calendar view & data state
@@ -15,9 +12,6 @@ export default function ManageSchedule() {
     // Data Lists
     const [events, setEvents] = useState([]);
     const [holidayEvents, setHolidayEvents] = useState([]);
-    const [mcList, setMcList] = useState([]);
-    const [pdList, setPdList] = useState([]);
-    const [roomList, setRoomList] = useState([]);
 
     // Form & selection states
     const [openToolBar, setOpenToolBar] = useState(false);
@@ -27,7 +21,31 @@ export default function ManageSchedule() {
 
     // Day-offs controls
     const [isClickDayOff, setClickDayOff] = useState(false);
-    const [isDayOffDate, setDayOffDate] = useState(false);
+
+    //totalhours data
+    const [hoursData, setHourData] = useState({});
+
+    const fetchHoursData = async (date = currentDate) => {
+        try {
+            const start = new Date(startOfMonth(date).setHours(0, 0, 0, 0)).toLocaleString();
+            const end = new Date(endOfMonth(date).setHours(23, 59, 59, 999)).toLocaleString();
+            const result = await api.get(`/summary?start=${start}&end=${end}`);
+            console.log("API hours data", result.data);
+            
+            setHourData(result.data);
+        } catch (err) {
+            console.error("Error fetching hours data", err);
+        }
+    }
+
+    useEffect(() => {
+        fetchHoursData(currentDate);
+    },[currentDate]);
+
+    const currentTotalHours = hoursData.total_hours;
+    const currentMcTotal = hoursData.mc_summary;
+    const currentPdTotal = hoursData.pd_summary;
+    const currentRoomTotal = hoursData.room_summary;
     
     useEffect(() => {
         const fetchSessionData = async () => {
@@ -49,56 +67,6 @@ export default function ManageSchedule() {
         };
         fetchSessionData();
     }, []);
-
-    const getWorkForceHours = (start, end) => (new Date(end) - new Date(start)) / (1000 * 60 * 60)
-    
-    const validateSession = (newEvent) => {
-            const errors = [];
-    
-            const newStart = new Date(newEvent.start);
-            const newEnd = new Date(newEvent.end);
-    
-            //check overlap session
-            const overlapping = events.filter((ev) => 
-            ev.id !== newEvent.id &&
-            newStart < new Date(ev.end) &&
-            newEnd > new Date(ev.start)
-            );
-
-            //check holiday
-    
-            overlapping.forEach(ev => {
-
-                if (ev.title === newEvent.title) {
-                    errors.push(`Room conflict with ${ev.start.toLocaleDateString("en-GB")}, cannot assign new session to ${ev.title}`)
-                }
-    
-                if(ev.mc === newEvent.mc) {
-                    errors.push(`MC duplication on ${ev.start.toLocaleDateString("en-GB")}, cannot assign new session to ${ev.mc}`)
-                }
-    
-                if(ev.pd === newEvent.pd) {
-                    errors.push(`PD duplication on ${ev.start.toLocaleDateString("en-GB")}, cannot assign new session to ${ev.pd}`)
-                }
-            })
-    
-            //check total hours
-            const mcTotal = events
-            .filter(ev => ev.mc === newEvent.mc && ev.id !== newEvent.id)
-            .reduce((sum, ev) => sum + getWorkForceHours(ev.start, ev.end),0) + getWorkForceHours(newStart, newEnd);
-    
-            const pdTotal = events
-            .filter(ev => ev.pd === newEvent.pd && ev.id !== newEvent.id)
-            .reduce((sum, ev) => sum + getWorkForceHours(ev.start, ev.end),0) + getWorkForceHours(newStart, newEnd);
-    
-            if(mcTotal > 124) errors.push(`${newEvent.mc} already exceed max hours (124 HRS), exceed amount: ${mcTotal.toFixed(1)} HRS`)
-            // else if(mcTotal < 96) errors.push(`${newEvent.mc} still need ${mcTotal.toFixed(1)} HRS to acheive min KPI (96 HRS)`)
-    
-            if(pdTotal > 176) errors.push(`${newEvent.pd} already exceed max hours (176 HRS), exceed amount: ${pdTotal.toFixed(1)} HRS`)
-            // else if(pdTotal < 132) errors.push(`${newEvent.pd} still need ${pdTotal.toFixed(1)} HRS to acheive min KPI (132 HRS)`)
-    
-            return errors
-    }
 
     const handleAddSessionBtnClick = () => {
         setOpenToolBar(true);
@@ -139,26 +107,68 @@ export default function ManageSchedule() {
                 </div>
             </div>
             <div className="body-container">
-                <AdminCalendar 
-                    currentView={currentView}
-                    setCurrentView={setCurrentView}
-                    currentDate={currentDate}
-                    setCurrentDate={setCurrentDate}
-                    openToolBar={openToolBar}
-                    setOpenToolBar={setOpenToolBar}
-                    editMode={editMode}
-                    setEditMode={setEditMode}
-                    events={events}
-                    setEvents={setEvents}
-                    selectedSlot={selectedSlot}
-                    setSelectedSlot={setSelectedSlot}
-                    validateSession={validateSession}
-                    targetEvent={targetEvent}
-                    setTargetEvent={setTargetEvent}
-                    isClickDayOff={isClickDayOff}
-                    holidayEvents={holidayEvents}
-                    setHolidayEvents={setHolidayEvents}
-                />
+                <div className="manageschedule-container">
+                    <div className="hours-summary-panel">
+                        <div className="hours-summary-total-card">
+                            <h5 className="total-card-title">MC Summary</h5>
+                            {currentMcTotal && currentMcTotal.length > 0 ? (
+                                currentMcTotal.map((mc) => (
+                                <div key={mc.id} className="individual-summary-card">
+                                    <div className="card-info">
+                                        <p className="card-info-title">{mc.nickname}</p>
+                                        <p className="card-info-hours"><span className="focus-hours">{mc.total}</span> /124 hours</p>
+                                    </div>
+                                </div> 
+                            ))) : (0)}                       
+                        </div>
+                        <br />
+                        <div className="hours-summary-total-card">
+                            <h5 className="total-card-title">PD Summary</h5>
+                            {currentPdTotal && currentPdTotal.length > 0 ? (
+                                currentPdTotal.map((pd) => (
+                                <div key={pd.id} className="individual-summary-card">
+                                    <div className="card-info">
+                                        <p className="card-info-title">{pd.nickname}</p>
+                                        <p className="card-info-hours"><span className="focus-hours">{pd.total}</span> /176 hours</p>
+                                    </div>
+                                </div>
+                            ))) : (0)} 
+                        </div>
+                        <br />
+                        <div className="hours-summary-total-card">
+                            <h5 className="total-card-title">Rooms Summary</h5>
+                            {currentRoomTotal && currentRoomTotal.length > 0 ? (
+                                currentRoomTotal.map((room) => (
+                                <div key={room.id} className="individual-summary-card">
+                                    <div className="card-info">
+                                        <p className="card-info-title">{room.name}</p>
+                                        <p className="card-info-hours"><span className="focus-hours">{room.total}</span> /704 hours</p>
+                                    </div>
+                                </div>
+                            ))) : (0)} 
+                        </div>
+                    </div>
+                    <AdminCalendar 
+                        currentView={currentView}
+                        setCurrentView={setCurrentView}
+                        currentDate={currentDate}
+                        setCurrentDate={setCurrentDate}
+                        openToolBar={openToolBar}
+                        setOpenToolBar={setOpenToolBar}
+                        editMode={editMode}
+                        setEditMode={setEditMode}
+                        events={events}
+                        setEvents={setEvents}
+                        selectedSlot={selectedSlot}
+                        setSelectedSlot={setSelectedSlot}
+                        targetEvent={targetEvent}
+                        setTargetEvent={setTargetEvent}
+                        isClickDayOff={isClickDayOff}
+                        holidayEvents={holidayEvents}
+                        setHolidayEvents={setHolidayEvents}
+                        fetchHoursData={fetchHoursData}
+                    />
+                </div>
             </div>
         </div>
     );

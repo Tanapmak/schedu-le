@@ -49,6 +49,19 @@ const ManageDayOff = () => {
         }
     };
 
+    const handleRevoke = async (id) => {
+        try {
+            setApprove(true);
+            await api.patch(`/dayoffs/${id}`, {dayoff_status: "pending"});
+
+            fetchDayoffRequestList();
+            
+            console.log("successfully revoke status"); 
+        } catch (err) {
+            console.error("Error revoke dayoff approval status", err);
+        }
+    };
+
     const handleSelectAll = () => {
         const allIds = listForApprove
         .filter((request) => request.dayoff_status === "pending")
@@ -181,9 +194,17 @@ const ManageDayOff = () => {
                                         <td style={setCustomStatusStyle(request.dayoff_status)}>{request.dayoff_status}</td>
                                         <td className="dayoff-btn-group">
                                             {isApproved ? (
+                                                <>
                                                 <button className="btn status-btn" disabled>already approved</button>
+                                                <button className="btn revoke-btn" 
+                                                onClick={() => handleRevoke(request.id)}>revoke</button>
+                                                </>
                                             ) : isRejected ? (
+                                                <>
                                                 <button className="btn status-reject-btn" disabled>already rejected</button>
+                                                <button className="btn revoke-btn" 
+                                                onClick={() => handleRevoke(request.id)}>revoke</button>
+                                                </>
                                             ) : (
                                                 <>
                                                 <button 

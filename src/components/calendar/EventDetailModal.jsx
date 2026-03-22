@@ -24,9 +24,9 @@ const EventDetailModal = ({isClickSummaryCard, event, onClose, onEdit, onDelete}
                     : event.pd_name}</p>
                     <p>date: {event.start.toLocaleDateString("en-GB")}</p>
                     <p>
-                        {event.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} 
+                        {event.start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} 
                          -  
-                        {event.end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {event.end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </p>
                 </div>
                 <div className="modal-btn-group">

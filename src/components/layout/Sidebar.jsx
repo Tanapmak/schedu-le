@@ -70,8 +70,8 @@ const Sidebar = (props) => {
                     <a href="#" className="sidebar-item-link">manage room</a>
                 </div>
             </div>}
-
-            <div className="sidebar-main-item-container" onClick={toggleCSMainItem}>
+            {/* This function is not ready yet */}
+            {/* <div className="sidebar-main-item-container" onClick={toggleCSMainItem}>
                 <div className="sidebar-main-item-text">
                     <i class="fa-solid fa-headphones"></i>
                     <a href="#" className="sidebar-item-link">customer service</a>
@@ -101,7 +101,7 @@ const Sidebar = (props) => {
                     <i className="fa-solid fa-people-roof"></i>
                     <a href="#" className="sidebar-item-link">manage CS</a>
                 </div>
-            </div>}
+            </div>} */}
 
             <div className="sidebar-main-item-container" onClick={toggleCampaignItem}>
                 <div className="sidebar-main-item-text">

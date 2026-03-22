@@ -1,3 +1,4 @@
+import { roundToNearestHoursWithOptions } from "date-fns/fp";
 import pool from "../config/db.js";
 
 // GET /api/dayoffs - get all day off list
@@ -62,7 +63,84 @@ export async function getDayOffByID(req, res) {
 }
 
 // POST /api/dayoffs - MC/PD request for day off
-export async function createDayOff(req, res) {
+
+//function for check the conflict dayoff ja
+async function checkDayOffConflicts (start, end, position_id) {
+    const normalizeDateOnly = (dateStr) => {
+        const d = new Date(dateStr);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    };
+
+    const normalizeDateEndOfDay = (dateStr) => {
+        const d = new Date(dateStr);
+        d.setHours(23, 59, 59, 999);
+        return d;
+    };
+
+    const newStart = normalizeDateOnly(start);
+    const newEnd = normalizeDateEndOfDay(end);
+
+    console.log("✅ Normalized start:", newStart.toISOString());
+    console.log("✅ Normalized end:", newEnd.toISOString()); 
+
+    const result = await pool.query(`
+        SELECT id, dayoff_start, dayoff_end
+        FROM personal_dayoffs
+        WHERE position_id = $1
+            AND (
+                (dayoff_start <= $2 AND dayoff_end >= $3)
+            )`
+        ,[position_id, newEnd, newStart]
+    );
+
+    const dateCount = {};
+    const getDayOffDateRange = (s, e) => {
+        const range = [];
+        const current = new Date(s);
+        const endDate = new Date(e);
+        
+        while (current <= endDate) {
+            const formatted = current.toLocaleDateString('sv-SE'); // YYYY-MM-DD
+            range.push(formatted);
+            current.setDate(current.getDate() + 1);
+        }
+        return range;
+    }
+    result.rows.forEach(row => {
+        const days = getDayOffDateRange(row.dayoff_start, row.dayoff_end);
+        console.log("📅 Existing dayoff range:", days);
+        
+        days.forEach(date => {
+            dateCount[date] = (dateCount[date] || 0) + 1;
+        });
+    });
+
+   const conflictDates = Object.entries(dateCount)
+        .filter(([_, count]) => count >= 2)
+        .map(([date]) => date);
+
+    console.log("🚨 Conflict Dates:", conflictDates);
+    return conflictDates;
+}
+
+async function checkDuplicateDayOffForPerson (start, end, personnel_id) {
+    const newStart = new Date(start);
+    const newEnd = new Date(end);
+
+    const result = await pool.query(`
+        SELECT id, dayoff_start, dayoff_end
+        FROM personal_dayoffs
+        WHERE personnel_id = $1
+        AND (
+            (dayoff_start <= $2 AND dayoff_end >= $3)
+        )`
+        ,[personnel_id, newEnd, newStart])
+        
+        return result.rows
+}
+
+export async function createDayOff(req, res) { 
     try {
         const {
             requester_id, 
@@ -73,6 +151,25 @@ export async function createDayOff(req, res) {
             reason, 
             dayoff_status,
         } = req.body;
+
+        const conflictDates = await checkDayOffConflicts(dayoff_start, dayoff_end, position_id);
+        console.log("check conflict date",conflictDates);
+        
+        const duplicate = await checkDuplicateDayOffForPerson(dayoff_start, dayoff_end, requester_id);
+
+        if (conflictDates.length > 0 && !is_urgent) {
+            return res.status(400).json({
+                error: position_id === 1 ? "More than 2 MC already request dayoff today, please tick urgent and provide reason" : "More than 2 PD request dayoff today, please tick urgent and provide reason",
+                conflictDates
+            });
+        };
+
+        if (duplicate.length > 0) {
+            return res.status(400).json({
+                error: "You already have a day off request on this date",
+                conflict: duplicate
+            });
+        };
 
         const result = await pool.query(`
             INSERT INTO personal_dayoffs
@@ -95,19 +192,57 @@ export async function createDayOff(req, res) {
 export async function updateDayOff(req, res) {
     try {
         const { id } = req.params;
-        const { dayoff_start, dayoff_end, is_urgent, reason } = req.body;
+        const {
+            requester_id, 
+            position_id, 
+            dayoff_start, 
+            dayoff_end, 
+            is_urgent, 
+            reason, 
+            dayoff_status,
+        } = req.body;
+
+        const conflictDates = await checkDayOffConflicts(dayoff_start, dayoff_end, position_id)
+        const duplicate = await pool.query(`
+            SELECT id
+            FROM personal_dayoffs
+            WHERE personnel_id = $1
+            AND id != $2
+            AND(
+                (dayoff_start <= $3 AND dayoff_end >= $4) OR
+                (dayoff_start <= $4 AND dayoff_end >= $3) OR
+                ($3 <= dayoff_start AND $4 >= dayoff_end)
+            )`
+            ,[requester_id, id, dayoff_end, dayoff_start]
+        );
+
+        if (conflictDates.length > 0 && !is_urgent) {
+            return res.status(400).json({
+                error: position_id === 1 ? "More than 2 MC already request dayoff today" : "More than 2 PD request dayoff today",
+                conflictDates
+            });
+        }
+
+        if (duplicate.rows.length > 0) {
+            return res.status(400).json({
+                error: "You already have another day off on this date"
+            })
+        }
 
         const result = await pool.query(
             `UPDATE personal_dayoffs
                 SET 
+                    personnel_id = $6,
+                    position_id = $7,
                     dayoff_start = $1,
                     dayoff_end   = $2,
                     is_urgent    = $3,
                     reason       = $4,
+                    dayoff_status = $8,
                     updated_at   = NOW()
                 WHERE id = $5
                 RETURNING *`,
-            [dayoff_start, dayoff_end, is_urgent, reason, id]
+            [dayoff_start, dayoff_end, is_urgent, reason, id, requester_id, position_id, dayoff_status]
         );
 
         if (result.rowCount === 0) {

@@ -45,8 +45,6 @@ const AdminCalendar = ({
   setEvents,
   selectedSlot,
   setSelectedSlot,
-  validateSession,
-  getWorkForceHours, 
   targetEvent,
   setTargetEvent,
   isClickDayOff,
@@ -55,12 +53,14 @@ const AdminCalendar = ({
   setHolidayEvents,
   isDayOfDate,
   setDayOffDate,
+  fetchHoursData,
 }) => {
 
   const [selectedSummaryDate, setSelectedSummaryDate] = useState(null)
   const [selectedSummaryTitle, setSeletedSummaryTitle] = useState(null)
   const [clickSummaryCard, setClickSummaryCard] = useState(false)
   const [clickSeeAllBtn, setClickSeeAllBtn] = useState(false);
+  const [formErrors, setFormErrors] = useState([]);
 
   useEffect(() => {
   console.log("🧠 Events passed to calendar:", events);
@@ -87,6 +87,8 @@ const AdminCalendar = ({
       setTargetEvent(null);
       setSelectedSlot(null);
       setOpenToolBar(false);
+      fetchHoursData(new Date(currentDate));
+      console.log("event delete successfully");
       
     } catch (err) {
       console.error("delete event error :", err);
@@ -122,8 +124,6 @@ const AdminCalendar = ({
         }
     }  
 
-  const [validationErrors, setValidationErrors] = useState([]);
-
   const handleDnD = async ({event, start, end}) => {
     console.log("DnD received event:",event);
     
@@ -133,8 +133,8 @@ const AdminCalendar = ({
         room_id: event.room_id,
         mc_id: event.mc_id,
         pd_id: event.pd_id,
-        session_start: new Date(start).toISOString(),
-        session_end: new Date(end).toISOString(),
+        session_start: start,
+        session_end: end,
       }
 
       console.log("check payload",payload);
@@ -146,14 +146,15 @@ const AdminCalendar = ({
         return prevEvents.map(
           (ev) => ev.id === event.id
         ? {...response.data,
-            session_start: new Date(response.data.session_start),
-            session_end: new Date(response.data.session_end),
+            session_start: response.data.session_start,
+            session_end: response.data.session_end,
             start: new Date(response.data.session_start),
             end: new Date(response.data.session_end),
           }
         : ev
         ) 
       });
+      fetchHoursData(currentDate);
     } catch (err) {
       console.error("Admin calendar DnD error",err);
       alert(`Failed update session : ${err?.response?.data?.error || err.message}`);
@@ -184,8 +185,8 @@ const AdminCalendar = ({
         room_id: newEvent.room_id,
         mc_id: newEvent.mc_id,
         pd_id: newEvent.pd_id,
-        session_start: format(newEvent.session_start, "yyyy-MM-dd'T'HH:mm:ss"),
-        session_end: format(newEvent.session_end,"yyyy-MM-dd'T'HH:mm:ss"),
+        session_start: newEvent.session_start,
+        session_end: newEvent.session_end,
       }
 
       if (editMode) {
@@ -197,14 +198,15 @@ const AdminCalendar = ({
           return prevEvents.map(
             (ev) => ev.id === newEvent.id 
             ? {...response.data, 
-                session_start: new Date(response.data.session_start),
-                session_end: new Date(response.data.session_end),
+                session_start: response.data.session_start,
+                session_end: response.data.session_end,
                 start: new Date(response.data.session_start),
                 end: new Date(response.data.session_end),
               } 
             : ev
           )
         });
+        fetchHoursData(new Date(currentDate));
       } else {
         console.log("handleSave data set:", payload);
         const response = await api.post(`/sessions`, payload);
@@ -212,8 +214,8 @@ const AdminCalendar = ({
         setEvents((prev) => [
           ...prev,
           {...response.data,
-            session_start: new Date(response.data.session_start),
-            session_end: new Date(response.data.session_end),
+            session_start: response.data.session_start,
+            session_end: response.data.session_end,
             start: new Date(response.data.session_start),
             end: new Date(response.data.session_end),
           }
@@ -226,8 +228,16 @@ const AdminCalendar = ({
       setEditMode(false);
       setSelectedSlot(null);
       setClickSummaryCard(false);
+      setFormErrors([]);
+      fetchHoursData(new Date(currentDate));
     } catch (err) {
       console.error("Unable to save event:", err);
+      if(err.response?.data?.error) {
+        const error = err.response.data.error
+        setFormErrors(Array.isArray(error) ? error : [error]);
+      } else {
+        setFormErrors("Unknown error occurred")
+      }
     };
   };
 
@@ -380,12 +390,12 @@ const AdminCalendar = ({
           pdName={editMode ? targetEvent.pd_name : selectedSlot.pd_name}
           dayType={editMode ? targetEvent.day_type : selectedSlot.day_type}
           isEditMode={editMode}
-          validateSession={validateSession}
-          getWorkForceHours={getWorkForceHours}
           onClose={handleFormClose}
           onSave={handleSaveEvent}
           isClickDayOff={isClickDayOff}
           isHolidayDate={isHoliday}
+          formErrors={formErrors}
+          setFormErrors={setFormErrors}
         />
       }
 
@@ -393,11 +403,7 @@ const AdminCalendar = ({
       <SummaryCardPanel 
         onClose={handleSummaryPanelClose}
         onEdit={handleEditEvent}
-        onDelete={(event) => {
-          setEvents((prevEvents) => 
-            prevEvents.filter((ev) => ev.id !== event.id)
-          );
-        }}
+        onDelete={handleDeleteEvent}
         events={events.filter((ev => new Date(ev.start).toDateString() === selectedSummaryDate.toDateString()))}
         isClickSummaryCard={clickSummaryCard}
         setClickSeeAllBtn={handleSeeAllBtnClick}

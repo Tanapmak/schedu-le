@@ -21,7 +21,7 @@ export async function getAllPersonnel(req, res) {
             FROM personnels psn
             LEFT JOIN positions pos
                 ON psn.position_id = pos.id
-            ORDER BY psn.id ASC`);
+            ORDER BY psn.nickname ASC`);
 
         const personnels = result.rows;
         res.json(personnels);
@@ -46,7 +46,8 @@ export async function getAllMC(req, res) {
             FROM personnels psn
             LEFT JOIN positions pos
                 ON psn.position_id = pos.id
-            WHERE pos.id = 1`);
+            WHERE pos.id = 1
+            ORDER BY psn.nickname ASC`);
         const mcList = result.rows;
         res.status(200).json(mcList)
     } catch (err) {
@@ -70,7 +71,8 @@ export async function getAllPD(req, res) {
             FROM personnels psn
             LEFT JOIN positions pos
                 ON psn.position_id = pos.id
-            WHERE pos.id = 2`);
+            WHERE pos.id = 2
+            ORDER BY psn.nickname ASC`);
         const pdList = result.rows;
         res.status(200).json(pdList)
     } catch (err) {

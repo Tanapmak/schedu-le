@@ -108,6 +108,16 @@ th {
   width: 200px;
 }
 
+.revoke-btn {
+    width: max-content;
+    background-color: #0077b8;
+    color: #fafafa;
+}
+
+.revoke-btn:hover {
+    background-color: #00a6e3;
+}
+
 .page-title {
     display: flex;
     justify-content: space-between;

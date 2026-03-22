@@ -48,7 +48,7 @@ export default function LiveSchedule() {
                                 name: session.mc_name,
                                 role: "MC",
                                 color: session.mc_color,
-                                title: `${session.mc_name} - ${session.room_name}`
+                                title: `${session.mc_name} - ${session.room_name} // ${new Date(session.session_start).toLocaleTimeString('en-GB',{hour: "2-digit", minute: "2-digit"})}`,
                             })
                         }
 
@@ -59,7 +59,7 @@ export default function LiveSchedule() {
                                 name: session.pd_name,
                                 role: "PD",
                                 color: session.pd_color,
-                                title: `${session.pd_name} - ${session.room_name}`,
+                                title: `${session.pd_name} - ${session.room_name} // ${new Date(session.session_start).toLocaleTimeString('en-GB',{hour: "2-digit", minute: "2-digit"})}`,
                             })
                         }
                     });

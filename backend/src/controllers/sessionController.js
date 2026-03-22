@@ -35,6 +35,16 @@ export async function getAllSessions(req, res) {
 
         const sessions = result.rows;
         res.json(sessions);
+        
+        // const formatSessions = sessions.map((row) => ({
+        //     ...row,
+        //     session_start: row.session_start,
+        //     session_end: row.session_end,
+        //     created_at: new Date(row.created_at).toISOString(),
+        //     updated_at: new Date(row.updated_at).toISOString(),
+        // }))
+        // res.json(formatSessions);
+
     } catch (err) {
         console.log(err);
         res.status(500).json({ error: "Server error, cannot get sessions" });
@@ -70,11 +80,21 @@ export async function getDayOffSessions(req, res) {
         );
 
         const sessions = result.rows;
+        // const formatSessions = sessions.map((row) => ({
+        //     ...row,
+        //     session_start: new Date(row.session_start).toISOString(),
+        //     session_end: new Date(row.session_end).toISOString(),
+        //     created_at: new Date(row.created_at).toISOString(),
+        //     updated_at: new Date(row.updated_at).toISOString(),
+        // }))
+
         if(result.rows.length === 0) {
             res.json({message: "No dayoff session has been added. Please add dayoff"});
             return;
         }
+        // res.json(formatSessions);
         res.json(sessions);
+
     } catch (err) {
         console.log("Update Session PATCH error",err);
         res.status(500).json({ error: err.message || "Server error, cannot get sessions" });
@@ -109,11 +129,19 @@ export async function getSessionById(req, res) {
             WHERE ss.id = $1
             ORDER BY ss.session_start
             `, [id]);
+        // const row = result.rows[0];
+        // row.session_start = new Date(row.session_start).toISOString();
+        // row.session_end = new Date(row.session_end).toISOString();
+        // row.created_at = new Date(row.created_at).toISOString();
+        // row.updated_at = new Date(row.updated_at).toISOString();
 
         if (result.rows.length === 0) {
             return res.status(404).json({ error: "Session not found" });
         }
+
+        // res.json(row);
         res.json(result.rows[0]);
+
     } catch (err) {
         console.log(err);
         res.status(500).json({error: "Server error, failed fetching sessions"});
@@ -168,7 +196,7 @@ export async function createSession(req, res) {
 
             const mcName = mcListResult.rows[0].nickname;
             const roomName = roomListResult.rows[0].name;
-            const isContentRoom = roomName.toLowerCase().includes("content room");
+            const isContentRoom = roomName.toLowerCase().includes("content");
 
             // overlap session validation
 
@@ -322,6 +350,9 @@ export async function createSession(req, res) {
             `, [sessionId]
         );
 
+        // fullSession.session_start = new Date(fullSession.session_start).toISOString();
+        // fullSession.session_end = new Date(fullSession.session_end).toISOString();
+
         return res.status(201).json(fullSession);
 
     } catch (err) {
@@ -388,7 +419,7 @@ export async function updateSession(req, res) {
                 // 4. เช็ค overlap แต่ข้ามตัวเอง (id != $4)
                 const mcName = mcListResult.rows[0].nickname || "Unknown MC";
                 const roomName = roomListResult.rows[0].name || "Unknown Room";
-                const isContentRoom = roomName.toLowerCase().includes("content room");
+                const isContentRoom = roomName.toLowerCase().includes("content");
 
                 let pdName = "";
                 if (!isContentRoom && pdId) {
@@ -552,6 +583,9 @@ export async function updateSession(req, res) {
                 `, [sessionId]
             );
 
+            // formUpdatedSession.session_start = new Date(formUpdatedSession.session_start).toISOString();
+            // formUpdatedSession.session_end = new Date(formUpdatedSession.session_end).toISOString();
+
             return res.status(201).json(formUpdatedSession);
         
     } catch (err) {
@@ -608,7 +642,7 @@ export async function updateSession(req, res) {
 
             const mcName = mcListResult.rows[0].nickname || "Unknown MC";
             const roomName = roomListResult.rows[0].name || "Unknown Room";
-            const isContentRoom = roomName.toLowerCase().includes("content room"); 
+            const isContentRoom = roomName.toLowerCase().includes("content"); 
             // มีคำว่า content room -> true,  ไม่มี --> false 
 
             let pdName = "";
@@ -738,6 +772,10 @@ export async function updateSession(req, res) {
             WHERE ss.id = $1
             `, [sessionId]
         );
+
+        // DnDupdatedSession.session_start = new Date(DnDupdatedSession.session_start).toISOString();
+        // DnDupdatedSession.session_end = new Date(DnDupdatedSession.session_end).toISOString();
+
         console.log("DnD session", DnDupdatedSession);
         return res.status(201).json(DnDupdatedSession);
 } catch (err) {
