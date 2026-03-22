@@ -1,12 +1,51 @@
-# React + Vite
+🗓️ Schedu-le
+Schedu-le is a robust scheduling and resource management application built with the MERN stack (React & Node.js). It aims to streamline the process of managing personnel shifts, room assignments, and leave requests through an intuitive, interactive calendar interface.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+---------------------------
 
-Currently, two official plugins are available:
+✨ Key Features
+1. Interactive Calendar: Visualizes schedules using react-big-calendar with drag-and-drop support.
+2. Personnel Management: Comprehensive system to manage staff information and their respective roles.
+3. Leave Management (Day-off): Specialized module for requesting and tracking staff time-off.
+4. Room & Session Control: Efficiently allocate rooms and manage specific time slots or "sessions" for activities.
+5. Automated Summaries: Generates reports and summaries of the schedule for quick overviews.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+🛠️ Tech Stack
+Frontend
+- Framework: React 19 (Vite)
+- State Management: React Hooks
+- Styling: Custom CSS with a modular approach
+- Libraries: Axios (API calls), date-fns (Date manipulation), React Big Calendar, and React DnD (Drag and Drop).
 
-## Expanding the ESLint configuration
+Backend
+- Environment: Node.js with Express
+- Utilities: dotenv for environment variables and body-parser for request handling.
+- Architecture: RESTful API design with modular routing for different resources.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---------------------------
+
+📂 Project Structure
+Plaintext
+├── backend/
+│   └── src/
+│       ├── routes/      # API Route definitions (Sessions, Dayoffs, etc.)
+│       └── server.js    # Express server entry point
+├── src/
+│   ├── components/      # UI Components (Calendar, Forms, Layout)
+│   ├── pages/           # Page views (Home, Manage Schedule, etc.)
+│   ├── styles/          # Modular CSS files
+│   └── App.jsx          # Main application component
+└── package.json         # Project dependencies and scripts
+
+---------------------------
+
+⌨️ Development Setup
+
+1. Backend Setup
+- Navigate to the backend directory.
+- Install dependencies: npm install
+- Start the server: npm start (Runs on http://localhost:3000 by default)
+
+2. Frontend Setup
+- Install dependencies at the root: npm install
+- Start the development server: npm run dev
