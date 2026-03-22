@@ -2,11 +2,15 @@ import { isSameDay, differenceInMinutes } from "date-fns";
 
 const roomColors = {
   "tiktok 1": "#505050",
-  "tiktok 2": "#878787",
-  lazada: "#4979D2",
-  shopee: "#DD6E00",
-  "content room": "#A149FF",
-  "day off": "#ED3419",
+            "tiktok 2": "#878787",
+            "tiktok 3": "#555555",
+            "lazada 1": "#4979D2",
+            "lazada 2": "#499DD2",
+            "shopee 1": "#DD6E00",
+            "shopee 2": "#DD6E00",
+            "shopee 3": "#DD6E00",
+            "content room": "#A149FF",
+            "day off": "#ED3419",
 }
 
 const SummaryCard = ({ value, events }) => {

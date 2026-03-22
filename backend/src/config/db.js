@@ -8,11 +8,13 @@ const pool = new Pool({
     user: process.env.PGUSER,
     password: process.env.PGPASSWORD,
     database: process.env.PGDATABASE,
-    port: process.env.PGPORT,
+    port: process.env.PGPORT || 5432,
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
-console.log("Checking DB Config:");
-console.log("User:", process.env.PGUSER);
-console.log("Password Type:", typeof process.env.PGPASSWORD);
+console.log(pool.database);
+
 
 export default pool;

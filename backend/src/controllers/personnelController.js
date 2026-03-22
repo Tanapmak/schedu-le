@@ -168,7 +168,7 @@ export async function updatePersonnel(req, res) {
             max_hours,
         } = req.body;
 
-        console.log("check req.body",req.body);
+        console.log("check updatePersonnel req.body",req.body);
         
         const result = await pool.query(
             `UPDATE personnels
@@ -193,6 +193,8 @@ export async function updatePersonnel(req, res) {
 
         const updatedPersonnelID = result.rows[0].id
 
+        console.log("check updated personnel id", result.rows[0].id);
+
         const updatedPersonnel = await pool.query(
             `SELECT
                 psn.id AS personnel_id,
@@ -214,6 +216,9 @@ export async function updatePersonnel(req, res) {
             WHERE psn.id = $1
             ORDER BY psn.id ASC`
             ,[updatedPersonnelID]);
+
+            console.log("feedbackToFrontend", updatedPersonnel.rows[0]);
+            
 
         res.status(200).json(updatedPersonnel.rows[0]);
 

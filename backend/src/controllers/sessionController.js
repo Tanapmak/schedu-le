@@ -19,7 +19,7 @@ export async function getAllSessions(req, res) {
                 ss.session_end,
                 ss.created_at,
                 ss.updated_at
-            FROM sessions ss
+            FROM public.sessions ss
             LEFT JOIN personnels mc
                 ON ss.mc_id = mc.id
             LEFT JOIN personnels pd

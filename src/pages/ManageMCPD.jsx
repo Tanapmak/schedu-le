@@ -14,6 +14,8 @@ const ManageMCPD = () => {
         try {
             const result = await api.get("/personnels");
             setPersonelList(result.data)
+            console.log("check fetching data",result.data);
+            
         } catch (err) {
             console.error("Error fetching personnels", err); 
         }       
@@ -25,6 +27,7 @@ const ManageMCPD = () => {
 
     const handleAddPersonelClick = () => {
         setFormOpen(true);
+        
     }
 
     const handleFormClose = () => {
