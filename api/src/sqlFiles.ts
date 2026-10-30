@@ -32,7 +32,7 @@ export async function migrate(client: pg.ClientBase, dir: string): Promise<strin
   return applied;
 }
 
-export async function runSqlDir(client: pg.ClientBase, dir: string): Promise<string[]> {
+export async function runSqlDir(client: Pick<pg.ClientBase, 'query'>, dir: string): Promise<string[]> {
   const files = await listSqlFiles(dir);
   for (const name of files) await client.query(await readFile(path.join(dir, name), 'utf8'));
   return files;

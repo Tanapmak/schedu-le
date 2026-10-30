@@ -1,8 +1,10 @@
 import type pg from 'pg';
+
+type Db = Pick<pg.ClientBase, 'query'>;
 import type { Rules } from './types.js';
 
 /** Reads the `rules` table. Every key must exist; the reference seed provides them. */
-export async function loadRules(client: pg.ClientBase): Promise<Rules> {
+export async function loadRules(client: Db): Promise<Rules> {
   const { rows } = await client.query<{ key: string; value: unknown }>('SELECT key, value FROM rules');
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
   const get = <T>(key: string): T => {
