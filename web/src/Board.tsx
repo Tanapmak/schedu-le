@@ -125,6 +125,11 @@ export function Board({ lang, rooms, people, user }: Props) {
         setForm({ mode: 'edit', session: s });
         return;
       }
+      // The browser still sends a click after the drag. If the pointer ended off the card (on a
+      // stacked row, say) that click would land on the lane and open a new-session form.
+      const swallow = (ev: MouseEvent) => ev.stopPropagation();
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
       void commitDrag(s, latest);
     };
     window.addEventListener('pointermove', onMove);
