@@ -1,36 +1,45 @@
-🗓️ Schedu-le
-Schedu-le is a robust scheduling and resource management application built with the MERN stack (React & Node.js). It aims to streamline the process of managing personnel shifts, room assignments, and leave requests through an intuitive, interactive calendar interface.
+# Schedu-le v2
 
----------------------------
+Scheduling for live-commerce MCs and PDs: rooms × time board, leave requests, hours vs KPI and live results.
+v2 is a rewrite for Google Cloud (Cloud Run + Cloud SQL Postgres + BigQuery). The v1 app is still on `main`.
 
-✨ Key Features
-1. Interactive Calendar: Visualizes schedules using react-big-calendar with drag-and-drop support.
-2. Personnel Management: Comprehensive system to manage staff information and their respective roles.
-3. Leave Management (Day-off): Specialized module for requesting and tracking staff time-off.
-4. Room & Session Control: Efficiently allocate rooms and manage specific time slots or "sessions" for activities.
-5. Automated Summaries: Generates reports and summaries of the schedule for quick overviews.
+## Layout
 
-🛠️ Tech Stack
-Frontend
-- Framework: React 19 (Vite)
-- State Management: React Hooks
-- Styling: Custom CSS with a modular approach
-- Libraries: Axios (API calls), date-fns (Date manipulation), React Big Calendar, and React DnD (Drag and Drop).
+| Path | What |
+|---|---|
+| `api/` | Express 5 + TypeScript API. Also serves the built web app in production. |
+| `web/` | React 19 + Vite front end. |
+| `db/migrations/` | SQL migrations, applied in file-name order and recorded in `schema_migrations`. |
+| `db/seed/` | Reference data (rooms, rules). `db/seed/dev/` holds sample people for local use only. |
 
-Backend
-- Environment: Node.js with Express
-- Utilities: dotenv for environment variables and body-parser for request handling.
-- Architecture: RESTful API design with modular routing for different resources.
+Double-booking rules live in the database as exclusion constraints: one room cannot have two live sessions at once,
+one person cannot work two overlapping sessions, and one person cannot have two overlapping pending/approved leave requests.
 
----------------------------
+## Run locally
 
-⌨️ Development Setup
+Needs Node 20+ and Postgres 16.
 
-1. Backend Setup
-- Navigate to the backend directory.
-- Install dependencies: npm install
-- Start the server: npm start (Runs on http://localhost:3000 by default)
+```sh
+docker compose up -d                      # Postgres on :5432 (user/password app/app)
+export DATABASE_URL=postgres://app:app@localhost:5432/schedule
+npm install
+npm run migrate
+npm run seed -- --dev                     # reference data + sample people
+npm run dev                               # API on :8080, web on :5173
+```
 
-2. Frontend Setup
-- Install dependencies at the root: npm install
-- Start the development server: npm run dev
+On Cloud Run the API connects through the Cloud SQL socket instead: set `DB_SOCKET`, `DB_NAME`, `DB_USER` and `DB_PASSWORD`.
+
+## Checks
+
+```sh
+npm run typecheck
+TEST_DATABASE_URL=postgres://app:app@localhost:5432/schedule_test npm test   # schema tests reset that database
+npm run build
+```
+
+Schema tests are skipped when `TEST_DATABASE_URL` is not set. Point it at a throwaway database: the tests drop and recreate its `public` schema.
+
+## Deploy
+
+`Dockerfile` builds one image that runs `node api/dist/index.js` on port 8080. Deployment to Cloud Run follows the setup guide.

@@ -1,0 +1,40 @@
+:root {
+  --red: #e60012;
+  --ink: #111;
+  --muted: #666;
+  --line: #e5e5e5;
+  --bg: #fff;
+  font-family: system-ui, 'Noto Sans Thai', 'Noto Sans SC', sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+button { font: inherit; cursor: pointer; }
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 12px 16px;
+  background: var(--ink);
+  color: #fff;
+}
+.brand { font-weight: 700; color: var(--red); }
+.topbar nav { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.topbar nav button, .lang button {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  color: #ccc;
+}
+.topbar nav button.active { background: var(--red); color: #fff; }
+.lang { display: flex; gap: 2px; border: 1px solid #444; border-radius: 8px; padding: 2px; }
+.lang button.active { background: #fff; color: var(--ink); }
+
+main { padding: 24px 16px; max-width: 960px; margin: 0 auto; }
+main p { color: var(--muted); }
+.health.ok { color: #1a7f37; }
+.health.down { color: var(--red); }
