@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { migrationsDir, seedDir } from '../src/paths.js';
+import { loadRules } from '../src/rules/index.js';
 import { migrate, runSqlDir } from '../src/sqlFiles.js';
 
 // Needs a throwaway Postgres: this test drops and recreates the public schema.
@@ -22,7 +23,9 @@ describe.skipIf(!url)('database schema', () => {
   });
 
   beforeEach(async () => {
+    // CASCADE also empties rules and audit_log (they reference people), so reseed.
     await client.query('TRUNCATE session_staff, sessions, leave_requests, people RESTART IDENTITY CASCADE');
+    await runSqlDir(client, seedDir);
     await client.query(`INSERT INTO people (nickname, position) VALUES ('MC A', 'mc'), ('PD A', 'pd'), ('PD B', 'pd')`);
   });
 
@@ -128,5 +131,14 @@ describe.skipIf(!url)('database schema', () => {
     expect(rows[0]).toMatchObject({ account: 'TTS 2', person: 'MC A', role_in_session: 'mc' });
     expect(Number(rows[0].scheduled_hours)).toBe(2);
     expect(rows[0].date).toBe('2026-11-05');
+  });
+
+  it('loads the seeded rules', async () => {
+    expect(await loadRules(client)).toEqual({
+      kpiHours: { mc: 96, pd: 132 },
+      maxHours: { mc: 124, pd: 176 },
+      leaveQuotaPerDay: { mc: 2, pd: 2 },
+      sessionSlotMinutes: 120,
+    });
   });
 });
