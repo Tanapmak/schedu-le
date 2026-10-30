@@ -1,3 +1,5 @@
+import { bkkTime } from './time';
+
 // TH/EN/ZH strings. Every key needs all three languages; TypeScript checks that.
 export const languages = ['th', 'en', 'zh'] as const;
 export type Lang = (typeof languages)[number];
@@ -67,8 +69,8 @@ const violationText: Record<string, Record<Lang, string>> = {
   unknown_person: { th: 'ไม่พบคนนี้', en: 'Person not found', zh: '找不到此人' },
   person_inactive: { th: '{person} ไม่ได้ทำงานแล้ว', en: '{person} is inactive', zh: '{person} 已停用' },
   role_not_allowed: { th: '{person} ทำหน้าที่ {role} ไม่ได้', en: '{person} cannot work as {role}', zh: '{person} 不能担任 {role}' },
-  room_busy: { th: 'ห้องนี้มีรอบอื่นช่วงเวลานี้', en: 'The room is booked at this time', zh: '该时段直播间已被占用' },
-  person_busy: { th: '{person} ติดรอบอื่นช่วงเวลานี้', en: '{person} is in another session', zh: '{person} 该时段有其他场次' },
+  room_busy: { th: 'ห้องนี้มีรอบ {where} อยู่แล้ว', en: 'The room already has a session {where}', zh: '该直播间已有场次 {where}' },
+  person_busy: { th: '{person} ติดรอบ {where}', en: '{person} is already in {where}', zh: '{person} 已在 {where} 有场次' },
   on_leave: { th: '{person} ลา (อนุมัติแล้ว)', en: '{person} is on approved leave', zh: '{person} 已请假（已批准）' },
   leave_pending: { th: '{person} มีใบลารออนุมัติ', en: '{person} has leave pending', zh: '{person} 有待批准的请假' },
   holiday: { th: 'ตรงกับวันหยุด {name}', en: 'Falls on holiday {name}', zh: '与假日 {name} 冲突' },
@@ -83,10 +85,21 @@ export interface ViolationLike {
   detail?: Record<string, string | number>;
 }
 
-export function violationMessage(lang: Lang, v: ViolationLike, personName: (id: number) => string): string {
+export function violationMessage(
+  lang: Lang,
+  v: ViolationLike,
+  personName: (id: number) => string,
+  roomCode: (id: number) => string = (id) => `#${id}`,
+): string {
   const template = violationText[v.code]?.[lang] ?? v.code;
   const values: Record<string, string | number> = { ...v.detail };
   if (v.personId !== undefined) values.person = personName(v.personId);
+  // A clash names the session in the way: "TTS 1 08:00–10:00".
+  const d = v.detail;
+  if (d && typeof d.start === 'string' && typeof d.end === 'string') {
+    const room = typeof d.roomId === 'number' ? `${roomCode(d.roomId)} ` : '';
+    values.where = `${room}${bkkTime(new Date(d.start))}–${bkkTime(new Date(d.end))}`;
+  }
   return template.replace(/\{(\w+)\}/g, (_, k: string) => String(values[k] ?? ''));
 }
 

@@ -124,7 +124,7 @@ export function Board({ lang, rooms, people }: Props) {
         staff: s.staff,
       };
       let res = await api.save(input, { id: s.id });
-      const text = res.violations.map((v) => `• ${violationMessage(lang, v, nameOf)}`).join('\n');
+      const text = res.violations.map((v) => `• ${violationMessage(lang, v, nameOf, (id) => rooms.find((r) => r.id === id)?.code ?? `#${id}`)}`).join('\n');
       if (!res.ok && res.violations.every((v) => v.severity === 'warning')) {
         if (window.confirm(`${text}\n\n${t(lang, 'saveAnyway')}?`)) res = await api.save(input, { id: s.id, confirm: true });
       } else if (!res.ok) {

@@ -119,6 +119,8 @@ describe('checkSession', () => {
       ['person_busy', 1],
       ['person_busy', 1],
     ]);
+    // The message can name the session in the way.
+    expect(v[1].detail).toEqual({ roomId: liveRoom.id, start: '2026-11-02T02:00:00.000Z', end: '2026-11-02T04:00:00.000Z' });
   });
 
   it('ignores itself when an existing session is edited', () => {

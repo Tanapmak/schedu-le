@@ -36,6 +36,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
   const room = rooms.find((r) => r.id === roomId);
   const needsPd = room ? room.roomType === 'live' && room.requiresPd : true;
   const nameOf = (id: number) => people.find((p) => p.id === id)?.nickname ?? `#${id}`;
+  const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
   const active = people.filter((p) => p.isActive);
   const mcOptions = active.filter((p) => p.position === 'mc' || p.position === 'pd'); // a PD can host
   const pdOptions = active.filter((p) => p.position === 'pd');
@@ -164,7 +165,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
           {violations.map((v, i) => (
             <li key={i} className={v.severity}>
               {v.severity === 'error' ? '✕ ' : '! '}
-              {violationMessage(lang, v, nameOf)}
+              {violationMessage(lang, v, nameOf, codeOf)}
             </li>
           ))}
         </ul>

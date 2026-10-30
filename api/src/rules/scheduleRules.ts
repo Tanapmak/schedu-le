@@ -81,14 +81,17 @@ export function checkSession(session: Session, ctx: SessionContext): Violation[]
   const others = ctx.sessions.filter((o) => o.id === undefined || o.id !== session.id);
   const live = others.filter((o) => o.status !== 'cancelled' && overlaps(o, session));
 
+  // Say which session is in the way, so the message can name its room and time.
+  const where = (o: Session) => ({ roomId: o.roomId, start: o.start.toISOString(), end: o.end.toISOString() });
+
   for (const o of live) {
-    if (o.roomId === session.roomId) add({ code: 'room_busy', severity: 'error', sessionId: o.id });
+    if (o.roomId === session.roomId) add({ code: 'room_busy', severity: 'error', sessionId: o.id, detail: where(o) });
   }
 
   for (const st of working) {
     for (const o of live) {
       if (o.staff.some((x) => x.personId === st.personId && !x.replaced)) {
-        add({ code: 'person_busy', severity: 'error', personId: st.personId, sessionId: o.id });
+        add({ code: 'person_busy', severity: 'error', personId: st.personId, sessionId: o.id, detail: where(o) });
       }
     }
     for (const l of ctx.leaves) {
