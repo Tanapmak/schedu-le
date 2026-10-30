@@ -37,6 +37,7 @@ export function Board({ lang, rooms, people, user }: Props) {
   const [failed, setFailed] = useState(false);
   const [form, setForm] = useState<FormTarget>();
   const [preview, setPreview] = useState<Preview>();
+  const [savingId, setSavingId] = useState<number>();
 
   const days = useMemo(
     () => (view === 'day' ? [date] : Array.from({ length: 7 }, (_, i) => addDays(mondayOf(date), i))),
@@ -132,15 +133,17 @@ export function Board({ lang, rooms, people, user }: Props) {
 
   async function commitDrag(s: Session, to: Preview) {
     const unchanged = to.roomId === s.roomId && to.start.getTime() === new Date(s.start).getTime() && to.end.getTime() === new Date(s.end).getTime();
-    let savedId: number | undefined;
-    if (!unchanged) {
-      const input = {
-        roomId: to.roomId,
-        start: to.start.toISOString(),
-        end: to.end.toISOString(),
-        note: s.note,
-        staff: s.staff,
-      };
+    if (unchanged) {
+      setPreview(undefined);
+      return;
+    }
+    // Show the session at its new place straight away; saving and reloading take a moment.
+    const moved = { ...s, roomId: to.roomId, start: to.start.toISOString(), end: to.end.toISOString() };
+    setData((d) => d && { ...d, sessions: d.sessions.map((x) => (x.id === s.id ? moved : x)) });
+    setPreview(undefined);
+    setSavingId(s.id);
+    try {
+      const input = { roomId: to.roomId, start: moved.start, end: moved.end, note: s.note, staff: s.staff };
       let res = await api.save(input, { id: s.id });
       const text = res.violations.map((v) => `• ${violationMessage(lang, v, nameOf, (id) => rooms.find((r) => r.id === id)?.code ?? `#${id}`)}`).join('\n');
       if (!res.ok && res.violations.every((v) => v.severity === 'warning')) {
@@ -148,10 +151,14 @@ export function Board({ lang, rooms, people, user }: Props) {
       } else if (!res.ok) {
         window.alert(text);
       }
-      if (res.ok) savedId = s.id;
+      // A refused move goes back to where it was.
+      if (res.ok) await afterSave(s.id);
+      else load();
+    } catch {
+      load();
+    } finally {
+      setSavingId(undefined);
     }
-    setPreview(undefined);
-    await afterSave(savedId);
   }
 
   // Sessions as they should look right now, with the one being dragged at its new place.
@@ -213,6 +220,7 @@ export function Board({ lang, rooms, people, user }: Props) {
                 date={date}
                 sessions={placed.filter((s) => s.roomId === room.id)}
                 draggingId={preview?.id}
+                savingId={savingId}
                 meId={user.id}
                 canEdit={canEdit}
                 nameOf={nameOf}
@@ -318,13 +326,37 @@ interface RowProps {
   sessions: Session[];
   nameOf: (id: number) => string;
   draggingId?: number;
+  savingId?: number;
   meId: number;
   canEdit: boolean;
   onDragStart: (e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) => void;
   onEmpty: (hour: number) => void;
 }
 
-function DayRow({ lang, room, date, sessions, draggingId, meId, canEdit, nameOf, onDragStart, onEmpty }: RowProps) {
+const ROW_H = 48; // height of one stacked row of cards in a lane, in px
+
+/**
+ * Puts overlapping sessions on separate rows so none hides another, e.g. a cancelled session
+ * and the replacement booked in its slot. The card being dragged keeps the top row, live
+ * sessions come next and cancelled ones fill in below.
+ */
+function stackRows(sessions: Session[], draggingId?: number): { rowOf: Map<number, number>; rows: number } {
+  const rank = (x: Session) => (x.id === draggingId ? 0 : x.status === 'cancelled' ? 2 : 1);
+  const order = [...sessions].sort((a, b) => rank(a) - rank(b) || Date.parse(a.start) - Date.parse(b.start));
+  const taken: { start: number; end: number }[][] = [];
+  const rowOf = new Map<number, number>();
+  for (const x of order) {
+    const span = { start: Date.parse(x.start), end: Date.parse(x.end) };
+    let row = taken.findIndex((spans) => spans.every((o) => o.end <= span.start || o.start >= span.end));
+    if (row === -1) row = taken.push([]) - 1;
+    taken[row].push(span);
+    rowOf.set(x.id, row);
+  }
+  return { rowOf, rows: Math.max(taken.length, 1) };
+}
+
+function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdit, nameOf, onDragStart, onEmpty }: RowProps) {
+  const { rowOf, rows } = stackRows(sessions, draggingId);
   return (
     <>
       <div className="room-label">
@@ -334,6 +366,7 @@ function DayRow({ lang, room, date, sessions, draggingId, meId, canEdit, nameOf,
       <div
         className="lane"
         data-room-id={room.id}
+        style={{ minHeight: rows * ROW_H + 8 }}
         onClick={(e) => {
           const box = e.currentTarget.getBoundingClientRect();
           const hour = DAY_START_H + Math.floor(((e.clientX - box.left) / box.width) * (DAY_END_H - DAY_START_H));
@@ -347,8 +380,13 @@ function DayRow({ lang, room, date, sessions, draggingId, meId, canEdit, nameOf,
           return (
             <div
               key={s.id}
-              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.status === 'cancelled' ? ' cancelled' : canEdit ? ' draggable' : ''}`}
-              style={{ left: `${(startMin / SPAN_MIN) * 100}%`, width: `${((endMin - startMin) / SPAN_MIN) * 100}%` }}
+              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.id === savingId ? ' saving' : ''}${s.status === 'cancelled' ? ' cancelled' : canEdit ? ' draggable' : ''}`}
+              style={{
+                left: `${(startMin / SPAN_MIN) * 100}%`,
+                width: `${((endMin - startMin) / SPAN_MIN) * 100}%`,
+                top: 4 + (rowOf.get(s.id) ?? 0) * ROW_H,
+                height: ROW_H - 4,
+              }}
               onPointerDown={(e) => onDragStart(e, s, 'move')}
               onClick={(e) => e.stopPropagation()}
             >
