@@ -55,6 +55,11 @@ const strings = {
   countHours: { th: 'ยังนับชั่วโมงให้ทีม', en: 'Still count hours for the team', zh: '仍计算工时' },
   checksOk: { th: '✓ ไม่ชนกับอะไร', en: '✓ No conflicts', zh: '✓ 无冲突' },
   hoursSuffix: { th: 'ชม.', en: 'h', zh: '小时' },
+  mergeAsk: {
+    th: 'รอบนี้ต่อกับรอบ {other} คนชุดเดียวกัน รวมเป็นรอบเดียว {merged} ไหม?',
+    en: 'This session runs straight into {other} with the same people. Merge them into one session, {merged}?',
+    zh: '该场次与 {other} 相连且人员相同，合并为一个场次 {merged} 吗？',
+  },
   contentNoPd: { th: 'ห้อง content ไม่ต้องมี PD', en: 'Content rooms need no PD', zh: '内容间不需要导播' },
 } satisfies Record<string, Record<Lang, string>>;
 

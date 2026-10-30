@@ -4,7 +4,7 @@ import path from 'node:path';
 import type pg from 'pg';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
-import { checkAgainstDb, saveSession } from './sessions.js';
+import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
 
 const MAX_RANGE_DAYS = 62;
@@ -80,6 +80,12 @@ export function createApp(pool: pg.Pool) {
       [id, reason, countHours],
     );
     res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
+  });
+
+  // Joins a back-to-back session (same room, people, status) into this one.
+  app.post('/api/sessions/:id/merge', async (req, res) => {
+    const result = await mergeSessions(pool, parseId(req.params.id, 'id'), parseId(req.body.withId, 'withId'));
+    res.status(result.ok ? 200 : 409).json(result);
   });
 
   // Only drafts can be deleted; published sessions are cancelled so hours and history stay.

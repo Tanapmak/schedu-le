@@ -97,6 +97,8 @@ export const api = {
     ).data,
   cancel: async (id: number, reason: string, countHours: boolean) =>
     (await request<{ ok: boolean }>('POST', `/api/sessions/${id}/cancel`, { reason, countHours })).data,
+  merge: async (id: number, withId: number) =>
+    (await request<{ ok: boolean }>('POST', `/api/sessions/${id}/merge`, { withId })).data,
   remove: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/sessions/${id}`)).data,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,

@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { bangkokMonth, checkSession, hasErrors, loadRules, type Session, type Violation } from './rules/index.js';
+import { bangkokMonth, canMerge, checkSession, hasErrors, loadRules, type Session, type Violation } from './rules/index.js';
 import {
   getSession,
   holidaysBetween,
@@ -99,3 +99,33 @@ function constraintViolation(err: unknown): Violation | undefined {
   return undefined;
 }
 
+
+/**
+ * Joins two back-to-back sessions with the same room and people into one. The other
+ * session is removed first, then this one stretches over both, so no clash is possible.
+ */
+export async function mergeSessions(pool: pg.Pool, id: number, otherId: number): Promise<{ ok: boolean; id?: number }> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT 1 FROM sessions WHERE id = ANY($1) FOR UPDATE', [[id, otherId]]);
+    const a = await getSession(client, id);
+    const b = await getSession(client, otherId);
+    if (!a || !b || id === otherId || !canMerge(a, b)) {
+      await client.query('ROLLBACK');
+      return { ok: false };
+    }
+    const start = a.start < b.start ? a.start : b.start;
+    const end = a.end > b.end ? a.end : b.end;
+    const note = [a.note, b.note].filter(Boolean).join(' / ') || null;
+    await client.query('DELETE FROM sessions WHERE id = $1', [otherId]);
+    await client.query('UPDATE sessions SET period = tstzrange($2, $3), note = $4 WHERE id = $1', [id, start, end, note]);
+    await client.query('COMMIT');
+    return { ok: true, id };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}

@@ -179,4 +179,21 @@ export function checkLeave(leave: Leave, ctx: LeaveContext): Violation[] {
   return out;
 }
 
+const staffKey = (s: Session) =>
+  s.staff
+    .filter((x) => !x.replaced)
+    .map((x) => `${x.personId}:${x.role}`)
+    .sort()
+    .join(',');
+
+/**
+ * Two sessions can become one when they are in the same room, back to back, have the
+ * same status (not cancelled) and the same people in the same roles.
+ */
+export function canMerge(a: Session, b: Session): boolean {
+  if (a.roomId !== b.roomId || a.status !== b.status || a.status === 'cancelled') return false;
+  const touching = a.end.getTime() === b.start.getTime() || b.end.getTime() === a.start.getTime();
+  return touching && staffKey(a) !== '' && staffKey(a) === staffKey(b);
+}
+
 export const hasErrors = (violations: Violation[]) => violations.some((v) => v.severity === 'error');

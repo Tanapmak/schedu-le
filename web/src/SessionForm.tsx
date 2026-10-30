@@ -13,7 +13,7 @@ interface Props {
   people: Person[];
   target: FormTarget;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (id?: number) => void;
 }
 
 export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: Props) {
@@ -74,7 +74,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
     setBusy(true);
     try {
       const res = await api.save(input, { id: editing?.id, confirm: needsConfirm });
-      if (res.ok) return onSaved();
+      if (res.ok) return onSaved(res.id);
       setViolations(res.violations);
       setNeedsConfirm(res.violations.every((v) => v.severity === 'warning'));
     } finally {

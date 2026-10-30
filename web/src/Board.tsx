@@ -48,6 +48,20 @@ export function Board({ lang, rooms, people }: Props) {
   }, [from.getTime(), to.getTime()]);
   useEffect(load, [load]);
 
+  // After a save, offer to join the session with a back-to-back one that has the same people.
+  async function afterSave(id?: number) {
+    const fresh = await api.board(from, to).catch(() => undefined);
+    if (!fresh) return load();
+    setData(fresh);
+    const me = fresh.sessions.find((x) => x.id === id);
+    const other = me && fresh.sessions.find((x) => x.id !== me.id && mergeable(me, x));
+    if (!me || !other) return;
+    const span = (a: Session) => `${bkkTime(new Date(a.start))}–${bkkTime(new Date(a.end))}`;
+    const merged = span({ ...me, start: me.start < other.start ? me.start : other.start, end: me.end > other.end ? me.end : other.end });
+    const text = t(lang, 'mergeAsk').replace('{other}', span(other)).replace('{merged}', merged);
+    if (window.confirm(text) && (await api.merge(me.id, other.id)).ok) load();
+  }
+
   const nameOf = (id: number) => people.find((p) => p.id === id)?.nickname ?? `#${id}`;
   const shown = rooms.filter((r) => r.isActive);
   const drafts = data?.sessions.filter((s) => s.status === 'draft').length ?? 0;
@@ -115,6 +129,7 @@ export function Board({ lang, rooms, people }: Props) {
 
   async function commitDrag(s: Session, to: Preview) {
     const unchanged = to.roomId === s.roomId && to.start.getTime() === new Date(s.start).getTime() && to.end.getTime() === new Date(s.end).getTime();
+    let savedId: number | undefined;
     if (!unchanged) {
       const input = {
         roomId: to.roomId,
@@ -130,9 +145,10 @@ export function Board({ lang, rooms, people }: Props) {
       } else if (!res.ok) {
         window.alert(text);
       }
+      if (res.ok) savedId = s.id;
     }
     setPreview(undefined);
-    load();
+    await afterSave(savedId);
   }
 
   // Sessions as they should look right now, with the one being dragged at its new place.
@@ -247,14 +263,26 @@ export function Board({ lang, rooms, people }: Props) {
           people={people}
           target={form}
           onClose={() => setForm(undefined)}
-          onSaved={() => {
+          onSaved={(id) => {
             setForm(undefined);
-            load();
+            void afterSave(id);
           }}
         />
       )}
     </section>
   );
+}
+
+/** Same rule as the API's canMerge: same room and status, back to back, same people in the same roles. */
+function mergeable(a: Session, b: Session): boolean {
+  const key = (x: Session) =>
+    x.staff
+      .filter((st) => !st.replaced)
+      .map((st) => `${st.personId}:${st.role}`)
+      .sort()
+      .join(',');
+  const touching = a.end === b.start || b.end === a.start;
+  return a.roomId === b.roomId && a.status === b.status && a.status !== 'cancelled' && touching && key(a) !== '' && key(a) === key(b);
 }
 
 function DayNotes({ lang, holiday, leaveNames }: { lang: Lang; holiday?: string; leaveNames: string[] }) {
