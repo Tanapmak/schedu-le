@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { api, type Board as BoardData, type Person, type Room, type Session } from './api';
+import { api, type Board as BoardData, type Person, type Room, type Session, type User } from './api';
 import { t, violationMessage, type Lang } from './i18n';
 import { SessionForm, type FormTarget } from './SessionForm';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk } from './time';
@@ -25,9 +25,12 @@ interface Props {
   lang: Lang;
   rooms: Room[];
   people: Person[];
+  user: User;
 }
 
-export function Board({ lang, rooms, people }: Props) {
+export function Board({ lang, rooms, people, user }: Props) {
+  // Only the admin edits; MC and PD see the published schedule with their own sessions marked.
+  const canEdit = user.role === 'admin';
   const [view, setView] = useState<View>('day');
   const [date, setDate] = useState(todayBkk());
   const [data, setData] = useState<BoardData>();
@@ -86,7 +89,7 @@ export function Board({ lang, rooms, people }: Props) {
   // Drag a session to move it (time and room); drag its right edge to change the end time.
   // A press without movement opens the form instead.
   function startDrag(e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) {
-    if (e.button !== 0 || s.status === 'cancelled') return;
+    if (!canEdit || e.button !== 0 || s.status === 'cancelled') return;
     e.preventDefault();
     e.stopPropagation();
     const lane = e.currentTarget.closest('.lane');
@@ -174,17 +177,19 @@ export function Board({ lang, rooms, people }: Props) {
             </button>
           ))}
         </div>
-        <div className="actions">
-          {drafts > 0 && (
-            <span className="badge">
-              {drafts} {t(lang, 'draftCount')}
-            </span>
-          )}
-          <button onClick={() => setForm({ mode: 'new', date, start: '10:00', end: '12:00' })}>{t(lang, 'addSession')}</button>
-          <button className="primary" disabled={drafts === 0} onClick={publish}>
-            {t(lang, 'publish')}
-          </button>
-        </div>
+        {canEdit && (
+          <div className="actions">
+            {drafts > 0 && (
+              <span className="badge">
+                {drafts} {t(lang, 'draftCount')}
+              </span>
+            )}
+            <button onClick={() => setForm({ mode: 'new', date, start: '10:00', end: '12:00' })}>{t(lang, 'addSession')}</button>
+            <button className="primary" disabled={drafts === 0} onClick={publish}>
+              {t(lang, 'publish')}
+            </button>
+          </div>
+        )}
       </div>
 
       {failed && <p className="error">{t(lang, 'loadFailed')}</p>}
@@ -208,9 +213,12 @@ export function Board({ lang, rooms, people }: Props) {
                 date={date}
                 sessions={placed.filter((s) => s.roomId === room.id)}
                 draggingId={preview?.id}
+                meId={user.id}
+                canEdit={canEdit}
                 nameOf={nameOf}
                 onDragStart={startDrag}
                 onEmpty={(hour) =>
+                  canEdit &&
                   setForm({ mode: 'new', roomId: room.id, date, start: `${pad(hour % 24)}:00`, end: `${pad((hour + 2) % 24)}:00` })
                 }
               />
@@ -242,9 +250,17 @@ export function Board({ lang, rooms, people }: Props) {
                   {days.map((d) => {
                     const list = data.sessions.filter((s) => s.roomId === room.id && bkkDate(new Date(s.start)) === d);
                     return (
-                      <td key={d} onClick={() => setForm({ mode: 'new', roomId: room.id, date: d, start: '10:00', end: '12:00' })}>
+                      <td key={d} onClick={() => canEdit && setForm({ mode: 'new', roomId: room.id, date: d, start: '10:00', end: '12:00' })}>
                         {list.map((s) => (
-                          <SessionChip key={s.id} lang={lang} session={s} room={room} nameOf={nameOf} onOpen={() => setForm({ mode: 'edit', session: s })} />
+                          <SessionChip
+                            key={s.id}
+                            lang={lang}
+                            session={s}
+                            room={room}
+                            meId={user.id}
+                            nameOf={nameOf}
+                            onOpen={canEdit ? () => setForm({ mode: 'edit', session: s }) : undefined}
+                          />
                         ))}
                       </td>
                     );
@@ -302,11 +318,13 @@ interface RowProps {
   sessions: Session[];
   nameOf: (id: number) => string;
   draggingId?: number;
+  meId: number;
+  canEdit: boolean;
   onDragStart: (e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) => void;
   onEmpty: (hour: number) => void;
 }
 
-function DayRow({ lang, room, date, sessions, draggingId, nameOf, onDragStart, onEmpty }: RowProps) {
+function DayRow({ lang, room, date, sessions, draggingId, meId, canEdit, nameOf, onDragStart, onEmpty }: RowProps) {
   return (
     <>
       <div className="room-label">
@@ -329,13 +347,13 @@ function DayRow({ lang, room, date, sessions, draggingId, nameOf, onDragStart, o
           return (
             <div
               key={s.id}
-              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.status === 'cancelled' ? ' cancelled' : ' draggable'}`}
+              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.status === 'cancelled' ? ' cancelled' : canEdit ? ' draggable' : ''}`}
               style={{ left: `${(startMin / SPAN_MIN) * 100}%`, width: `${((endMin - startMin) / SPAN_MIN) * 100}%` }}
               onPointerDown={(e) => onDragStart(e, s, 'move')}
               onClick={(e) => e.stopPropagation()}
             >
-              <SessionChip lang={lang} session={s} room={room} nameOf={nameOf} />
-              {s.status !== 'cancelled' && (
+              <SessionChip lang={lang} session={s} room={room} meId={meId} nameOf={nameOf} />
+              {canEdit && s.status !== 'cancelled' && (
                 <span className="resize" aria-hidden="true" onPointerDown={(e) => onDragStart(e, s, 'resize')} />
               )}
             </div>
@@ -350,15 +368,17 @@ interface ChipProps {
   lang: Lang;
   session: Session;
   room: Room;
+  meId: number;
   nameOf: (id: number) => string;
   onOpen?: () => void; // day view opens through the drag handler instead
 }
 
-function SessionChip({ lang, session: s, room, nameOf, onOpen }: ChipProps) {
+function SessionChip({ lang, session: s, room, meId, nameOf, onOpen }: ChipProps) {
   const working = s.staff.filter((x) => !x.replaced);
   const missingPd = room.roomType === 'live' && room.requiresPd && !working.some((x) => x.role === 'pd');
   const names = working.map((x) => nameOf(x.personId)).join(' · ');
-  const cls = ['chip', s.status, missingPd && s.status !== 'cancelled' ? 'incomplete' : ''].join(' ');
+  const mine = working.some((x) => x.personId === meId);
+  const cls = ['chip', s.status, missingPd && s.status !== 'cancelled' ? 'incomplete' : '', mine ? 'mine' : ''].join(' ');
   return (
     <button
       className={cls}

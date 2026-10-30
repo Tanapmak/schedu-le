@@ -71,17 +71,69 @@ export interface SaveResponse {
   violations: ViolationLike[];
 }
 
+export type Role = 'admin' | 'mc' | 'pd' | 'viewer';
+
+export interface User {
+  id: number;
+  nickname: string;
+  email: string;
+  role: Role;
+  position: Person['position'];
+}
+
+export interface Me {
+  user: User;
+  mode: 'iap' | 'dev';
+  devUsers?: { nickname: string; email: string; role: Role }[];
+}
+
+/** Sign-in problems: 401 not signed in, 403 signed in but not on the team list. */
+export class AuthError extends Error {
+  constructor(
+    readonly status: number,
+    readonly email: string | null,
+  ) {
+    super(`auth ${status}`);
+  }
+}
+
+// Local development has no Google sign-in; the user switcher picks who to act as.
+const DEV_USER_KEY = 'devUser';
+export function devUser(): string | null {
+  try {
+    return localStorage.getItem(DEV_USER_KEY);
+  } catch {
+    return null;
+  }
+}
+export function setDevUser(email: string) {
+  try {
+    localStorage.setItem(DEV_USER_KEY, email);
+  } catch {
+    // storage blocked; the switch lasts until reload
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
+  const headers: Record<string, string> = {};
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  const asUser = devUser();
+  if (asUser) headers['x-dev-user'] = asUser;
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (res.status >= 500) throw new Error(`${method} ${path}: ${res.status}`);
+  if (res.status === 401 || (res.status === 403 && path === '/api/me')) {
+    const data = (await res.json().catch(() => ({}))) as { email?: string };
+    throw new AuthError(res.status, data.email ?? null);
+  }
   return { status: res.status, data: (await res.json()) as T };
 }
 
 export const api = {
+  me: async () => (await request<Me>('GET', '/api/me')).data,
   rooms: async () => (await request<Room[]>('GET', '/api/rooms')).data,
   people: async () => (await request<Person[]>('GET', '/api/people')).data,
   board: async (from: Date, to: Date) =>

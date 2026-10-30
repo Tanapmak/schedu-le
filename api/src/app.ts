@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type pg from 'pg';
+import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.js';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
@@ -9,7 +10,7 @@ import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween 
 
 const MAX_RANGE_DAYS = 62;
 
-export function createApp(pool: pg.Pool) {
+export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig()) {
   const app = express();
   app.use(express.json());
 
@@ -20,6 +21,18 @@ export function createApp(pool: pg.Pool) {
     } catch {
       res.status(503).json({ ok: false, db: 'down' });
     }
+  });
+
+  // Everything below needs a signed-in team member.
+  app.use('/api', authenticate(pool, auth));
+
+  app.get('/api/me', async (req, res) => {
+    // In dev mode the web app shows a switcher to try each role.
+    const devUsers =
+      auth.mode === 'dev'
+        ? (await pool.query(`SELECT nickname, email, app_role AS role FROM people WHERE is_active AND email IS NOT NULL ORDER BY id`)).rows
+        : undefined;
+    res.json({ user: req.user, mode: auth.mode, devUsers });
   });
 
   app.get('/api/rooms', async (_req, res) => {
@@ -42,11 +55,13 @@ export function createApp(pool: pg.Pool) {
       leavesBetween(pool, from, to),
       holidaysBetween(pool, from, to),
     ]);
-    res.json({ sessions, leaves, holidays });
+    // Drafts are the admin's work in progress; the team only sees what is published.
+    const visible = req.user?.role === 'admin' ? sessions : sessions.filter((x) => x.status !== 'draft');
+    res.json({ sessions: visible, leaves, holidays });
   });
 
   // Live check while the admin fills the form; saves nothing.
-  app.post('/api/sessions/check', async (req, res) => {
+  app.post('/api/sessions/check', requireAdmin, async (req, res) => {
     const input = parseSessionInput(req.body);
     const id = req.body.id === undefined ? undefined : parseId(req.body.id, 'id');
     const client = await pool.connect();
@@ -57,19 +72,19 @@ export function createApp(pool: pg.Pool) {
     }
   });
 
-  app.post('/api/sessions', async (req, res) => {
-    const result = await saveSession(pool, parseSessionInput(req.body), { confirm: req.body.confirm === true });
+  app.post('/api/sessions', requireAdmin, async (req, res) => {
+    const result = await saveSession(pool, parseSessionInput(req.body), { confirm: req.body.confirm === true, actorId: req.user?.id });
     if (result.ok) res.status(201).json(result);
     else res.status(result.status).json(result);
   });
 
-  app.put('/api/sessions/:id', async (req, res) => {
+  app.put('/api/sessions/:id', requireAdmin, async (req, res) => {
     const id = parseId(req.params.id, 'id');
     const result = await saveSession(pool, parseSessionInput(req.body), { id, confirm: req.body.confirm === true });
     res.status(result.ok ? 200 : result.status).json(result);
   });
 
-  app.post('/api/sessions/:id/cancel', async (req, res) => {
+  app.post('/api/sessions/:id/cancel', requireAdmin, async (req, res) => {
     const id = parseId(req.params.id, 'id');
     const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
     if (!reason) throw new BadRequest('reason is required');
@@ -83,20 +98,20 @@ export function createApp(pool: pg.Pool) {
   });
 
   // Joins a back-to-back session (same room, people, status) into this one.
-  app.post('/api/sessions/:id/merge', async (req, res) => {
+  app.post('/api/sessions/:id/merge', requireAdmin, async (req, res) => {
     const result = await mergeSessions(pool, parseId(req.params.id, 'id'), parseId(req.body.withId, 'withId'));
     res.status(result.ok ? 200 : 409).json(result);
   });
 
   // Only drafts can be deleted; published sessions are cancelled so hours and history stay.
-  app.delete('/api/sessions/:id', async (req, res) => {
+  app.delete('/api/sessions/:id', requireAdmin, async (req, res) => {
     const id = parseId(req.params.id, 'id');
     const { rowCount } = await pool.query(`DELETE FROM sessions WHERE id = $1 AND status = 'draft'`, [id]);
     res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
   });
 
   // Publishes every draft that starts in [from, to).
-  app.post('/api/publish', async (req, res) => {
+  app.post('/api/publish', requireAdmin, async (req, res) => {
     const from = parseDate(req.body.from, 'from');
     const to = parseDate(req.body.to, 'to');
     const { rowCount } = await pool.query(

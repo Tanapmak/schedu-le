@@ -30,6 +30,25 @@ npm run dev                               # API on :8080, web on :5173
 
 On Cloud Run the API connects through the Cloud SQL socket instead: set `DB_SOCKET`, `DB_NAME`, `DB_USER` and `DB_PASSWORD`.
 
+## Sign-in and roles
+
+Each person signs in with their Google account. `people.email` links the account to a person, and `people.app_role` sets what they can do:
+
+| Role | Can |
+|---|---|
+| `admin` | Add, change, cancel and publish sessions. Sees drafts. |
+| `mc`, `pd`, `viewer` | See the published schedule; their own sessions are marked. |
+
+`AUTH_MODE` picks how the API learns who is calling:
+
+- `iap` (default when `NODE_ENV=production`): Cloud Run sits behind IAP. The API checks IAP's signed header
+  (`x-goog-iap-jwt-assertion`) against `IAP_AUDIENCE`, which is `/projects/<project number>/locations/<region>/services/<service>`.
+  The app refuses to start without it.
+- `dev` (default otherwise): no Google sign-in. The web app shows a "view as" switcher listing everyone with an email,
+  so each role can be tried locally. Without a choice, the first admin is used.
+
+A Google account that is not in `people` (or is archived) gets a "not on the team list" page.
+
 ## Checks
 
 ```sh

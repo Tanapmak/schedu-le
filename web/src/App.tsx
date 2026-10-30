@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react';
-import { api, type Person, type Room } from './api';
+import { api, AuthError, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
 import { Board } from './Board';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 const pages: StringKey[] = ['schedule', 'mySchedule', 'leave', 'hours', 'results'];
 type Health = 'checking' | 'ok' | 'down';
+
+const roleKey: Record<Role, StringKey> = { admin: 'roleAdmin', mc: 'roleMc', pd: 'rolePd', viewer: 'roleViewer' };
+
+// A dev user saved from an earlier database may no longer exist; fall back to the default once.
+async function loadMe(): Promise<Me> {
+  try {
+    return await api.me();
+  } catch (err) {
+    if (err instanceof AuthError && err.status === 403 && devUser()) {
+      setDevUser('');
+      return api.me();
+    }
+    throw err;
+  }
+}
 
 export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
@@ -12,6 +27,8 @@ export function App() {
   const [health, setHealth] = useState<Health>('checking');
   const [rooms, setRooms] = useState<Room[]>();
   const [people, setPeople] = useState<Person[]>();
+  const [me, setMe] = useState<Me>();
+  const [authError, setAuthError] = useState<AuthError>();
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -26,13 +43,18 @@ export function App() {
     fetch('/api/health')
       .then((res) => setHealth(res.ok ? 'ok' : 'down'))
       .catch(() => setHealth('down'));
-    Promise.all([api.rooms(), api.people()]).then(
-      ([r, p]) => {
-        setRooms(r);
-        setPeople(p);
-      },
-      () => setHealth('down'),
-    );
+    loadMe()
+      .then((m) => {
+        setMe(m);
+        return Promise.all([api.rooms(), api.people()]);
+      })
+      .then(
+        ([r, p]) => {
+          setRooms(r);
+          setPeople(p);
+        },
+        (err) => (err instanceof AuthError ? setAuthError(err) : setHealth('down')),
+      );
   }, []);
 
   const healthKey = health === 'ok' ? 'apiOk' : health === 'down' ? 'apiDown' : 'apiChecking';
@@ -48,6 +70,33 @@ export function App() {
             </button>
           ))}
         </nav>
+        {me && (
+          <div className="whoami">
+            {me.mode === 'dev' && me.devUsers ? (
+              <label>
+                <span className="sr-only">{t(lang, 'viewAs')}</span>
+                <select
+                  title={t(lang, 'viewAs')}
+                  value={me.user.email}
+                  onChange={(e) => {
+                    setDevUser(e.target.value);
+                    window.location.reload();
+                  }}
+                >
+                  {me.devUsers.map((u) => (
+                    <option key={u.email} value={u.email}>
+                      {u.nickname} · {t(lang, roleKey[u.role])}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span>
+                {me.user.nickname} · {t(lang, roleKey[me.user.role])}
+              </span>
+            )}
+          </div>
+        )}
         <div className="lang" role="group" aria-label="Language">
           {languages.map((l) => (
             <button key={l} className={l === lang ? 'active' : ''} onClick={() => setLang(l)}>
@@ -57,8 +106,12 @@ export function App() {
         </div>
       </header>
       <main>
-        {page === 'schedule' && rooms && people ? (
-          <Board lang={lang} rooms={rooms} people={people} />
+        {authError ? (
+          <p className="error">
+            {authError.status === 403 ? t(lang, 'notRegistered').replace('{email}', authError.email ?? '') : t(lang, 'notSignedIn')}
+          </p>
+        ) : page === 'schedule' && rooms && people && me ? (
+          <Board lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : (
           <>
             <h1>{t(lang, page)}</h1>

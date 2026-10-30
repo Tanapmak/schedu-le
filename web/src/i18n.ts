@@ -16,6 +16,17 @@ const strings = {
   apiOk: { th: 'เชื่อมต่อระบบแล้ว', en: 'Connected', zh: '已连接' },
   apiDown: { th: 'เชื่อมต่อฐานข้อมูลไม่ได้', en: 'Database unavailable', zh: '数据库不可用' },
   apiChecking: { th: 'กำลังตรวจสอบ…', en: 'Checking…', zh: '检查中…' },
+  notRegistered: {
+    th: 'บัญชี {email} ยังไม่ได้อยู่ในรายชื่อทีม ติดต่อแอดมินให้เพิ่มอีเมลนี้',
+    en: '{email} is not on the team list yet. Ask an admin to add this email.',
+    zh: '{email} 尚未加入团队名单，请联系管理员添加此邮箱。',
+  },
+  notSignedIn: { th: 'ยังไม่ได้ล็อกอิน ลองโหลดหน้าใหม่', en: 'Not signed in. Try reloading the page.', zh: '尚未登录，请刷新页面。' },
+  viewAs: { th: 'ดูในฐานะ (dev)', en: 'View as (dev)', zh: '以此身份查看 (dev)' },
+  roleAdmin: { th: 'แอดมิน', en: 'Admin', zh: '管理员' },
+  roleMc: { th: 'MC', en: 'MC', zh: '主播' },
+  rolePd: { th: 'PD', en: 'PD', zh: '导播' },
+  roleViewer: { th: 'ดูอย่างเดียว', en: 'Viewer', zh: '只读' },
 
   // Board
   day: { th: 'วัน', en: 'Day', zh: '日' },

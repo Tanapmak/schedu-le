@@ -110,10 +110,11 @@ export interface SessionInput {
   staff: StaffAssignment[];
 }
 
-export async function insertSession(db: Db, s: SessionInput): Promise<number> {
+export async function insertSession(db: Db, s: SessionInput, createdBy?: number): Promise<number> {
   const { rows } = await db.query(
-    `INSERT INTO sessions (room_id, period, location, note) VALUES ($1, tstzrange($2, $3), $4, $5) RETURNING id::int`,
-    [s.roomId, s.start, s.end, s.location ?? 'studio', s.note ?? null],
+    `INSERT INTO sessions (room_id, period, location, note, created_by)
+     VALUES ($1, tstzrange($2, $3), $4, $5, $6) RETURNING id::int`,
+    [s.roomId, s.start, s.end, s.location ?? 'studio', s.note ?? null, createdBy ?? null],
   );
   const id: number = rows[0].id;
   await replaceStaff(db, id, s.staff);
