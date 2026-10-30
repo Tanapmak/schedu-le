@@ -61,4 +61,12 @@ Schema tests are skipped when `TEST_DATABASE_URL` is not set. Point it at a thro
 
 ## Deploy
 
-`Dockerfile` builds one image that runs `node api/dist/index.js` on port 8080. Deployment to Cloud Run follows the setup guide.
+`Dockerfile` builds one image that runs `node api/dist/index.js` on port 8080. The first deploy to Cloud Run is done by hand
+(setup guide, step 6). After that a Cloud Build trigger on pushes to `v2` runs `cloudbuild.yaml`:
+
+1. typecheck and unit tests
+2. build and push the image to Artifact Registry (`cloud-run-source-deploy`, created by the first deploy)
+3. run the migrations as the Cloud Run job `schedu-le-migrate`, with the app's service account and database access
+4. deploy the new image to the `schedu-le` service; IAP and other service settings carry over
+
+The service needs `IAP_AUDIENCE=/projects/<project number>/locations/asia-southeast1/services/schedu-le` (see "Sign-in and roles").

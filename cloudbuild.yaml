@@ -1,0 +1,62 @@
+# Push to v2 (later main) → test → build image → migrate the database → deploy to Cloud Run.
+# Runs as the schedu-le-build service account (see setup guide, step 7.1).
+substitutions:
+  _REGION: asia-southeast1
+  _SERVICE: schedu-le
+  _INSTANCE: schedu-le-db
+  _APP_SA: schedu-le-app@${PROJECT_ID}.iam.gserviceaccount.com
+  _IMAGE: ${_REGION}-docker.pkg.dev/${PROJECT_ID}/cloud-run-source-deploy/${_SERVICE}:${SHORT_SHA}
+options:
+  logging: CLOUD_LOGGING_ONLY
+  dynamicSubstitutions: true
+
+steps:
+  # Unit tests; the database tests skip themselves without TEST_DATABASE_URL.
+  - id: test
+    name: node:22
+    entrypoint: bash
+    args: ['-c', 'npm ci && npm run typecheck && npm test']
+
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ['build', '-t', '${_IMAGE}', '.']
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ['push', '${_IMAGE}']
+
+  # Migrations run as a one-off Cloud Run job with the same image and database access as the app,
+  # so the schema is up to date before the new revision takes traffic.
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_SERVICE}-migrate
+      - --image=${_IMAGE}
+      - --region=${_REGION}
+      - --service-account=${_APP_SA}
+      - --set-cloudsql-instances=${PROJECT_ID}:${_REGION}:${_INSTANCE}
+      - --set-env-vars=DB_SOCKET=/cloudsql/${PROJECT_ID}:${_REGION}:${_INSTANCE},DB_NAME=schedule,DB_USER=app
+      - --set-secrets=DB_PASSWORD=db-password:latest
+      - --command=node
+      - --args=api/dist/migrate.js
+      - --max-retries=0
+      - --execute-now
+      - --wait
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_IMAGE}
+      - --region=${_REGION}
+      - --service-account=${_APP_SA}
+      - --add-cloudsql-instances=${PROJECT_ID}:${_REGION}:${_INSTANCE}
+      - --set-env-vars=DB_SOCKET=/cloudsql/${PROJECT_ID}:${_REGION}:${_INSTANCE},DB_NAME=schedule,DB_USER=app,TZ=Asia/Bangkok,IAP_AUDIENCE=/projects/${PROJECT_NUMBER}/locations/${_REGION}/services/${_SERVICE}
+      - --set-secrets=DB_PASSWORD=db-password:latest
