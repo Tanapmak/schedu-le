@@ -1,11 +1,14 @@
 import { bangkokDates, bangkokMonth, hoursOf, overlaps } from './time.js';
 import type { Holiday, Leave, Person, Room, Rules, Session, StaffRole, Violation } from './types.js';
 
-/** Which session roles a position may take. A PD can host as MC; an MC cannot run as PD. */
+/**
+ * Which session roles a position may take. A PD can host as MC; an MC cannot run as PD.
+ * Operation staff step in as either when a live loses someone at short notice.
+ */
 const allowedRoles: Record<Person['position'], StaffRole[]> = {
   mc: ['mc'],
   pd: ['mc', 'pd'],
-  operation: [],
+  operation: ['mc', 'pd'],
 };
 
 /** Hours a staff row earns: published sessions, plus cancelled ones still marked to count. Replaced people earn none. */

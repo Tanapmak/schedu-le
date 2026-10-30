@@ -38,8 +38,10 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
   const nameOf = (id: number) => people.find((p) => p.id === id)?.nickname ?? `#${id}`;
   const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
   const active = people.filter((p) => p.isActive);
-  const mcOptions = active.filter((p) => p.position === 'mc' || p.position === 'pd'); // a PD can host
-  const pdOptions = active.filter((p) => p.position === 'pd');
+  // A PD can host; operation staff can fill either seat. They are listed after the regulars.
+  const byPosition = (...positions: Person['position'][]) => positions.flatMap((pos) => active.filter((p) => p.position === pos));
+  const mcOptions = byPosition('mc', 'pd', 'operation');
+  const pdOptions = byPosition('pd', 'operation');
 
   const input = useMemo((): SessionInput | undefined => {
     if (!roomId || !date || !start || !end) return undefined;
@@ -134,7 +136,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
               {mcOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nickname}
-                  {p.position === 'pd' ? ' (PD)' : ''}
+                  {p.position === 'pd' ? ' (PD)' : p.position === 'operation' ? ' (OP)' : ''}
                 </option>
               ))}
             </select>
@@ -147,6 +149,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
                 {pdOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nickname}
+                    {p.position === 'operation' ? ' (OP)' : ''}
                   </option>
                 ))}
               </select>
