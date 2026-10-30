@@ -5,7 +5,7 @@
   "workspaces": ["api", "web"],
   "engines": { "node": ">=20" },
   "scripts": {
-    "dev": "npm run dev -w api & npm run dev -w web",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run build -w web && npm run build -w api",
     "start": "npm run start -w api",
     "migrate": "npm run migrate -w api",

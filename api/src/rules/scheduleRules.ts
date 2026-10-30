@@ -53,11 +53,6 @@ export function checkSession(session: Session, ctx: SessionContext): Violation[]
     return out;
   }
 
-  const slotMs = ctx.rules.sessionSlotMinutes * 60_000;
-  if ((session.end.getTime() - session.start.getTime()) % slotMs !== 0) {
-    add({ code: 'off_slot', severity: 'warning', detail: { slotMinutes: ctx.rules.sessionSlotMinutes } });
-  }
-
   if (!ctx.room.isActive) add({ code: 'room_inactive', severity: 'error' });
 
   const working = session.staff.filter((s) => !s.replaced);
@@ -86,14 +81,17 @@ export function checkSession(session: Session, ctx: SessionContext): Violation[]
   const others = ctx.sessions.filter((o) => o.id === undefined || o.id !== session.id);
   const live = others.filter((o) => o.status !== 'cancelled' && overlaps(o, session));
 
+  // Say which session is in the way, so the message can name its room and time.
+  const where = (o: Session) => ({ roomId: o.roomId, start: o.start.toISOString(), end: o.end.toISOString() });
+
   for (const o of live) {
-    if (o.roomId === session.roomId) add({ code: 'room_busy', severity: 'error', sessionId: o.id });
+    if (o.roomId === session.roomId) add({ code: 'room_busy', severity: 'error', sessionId: o.id, detail: where(o) });
   }
 
   for (const st of working) {
     for (const o of live) {
       if (o.staff.some((x) => x.personId === st.personId && !x.replaced)) {
-        add({ code: 'person_busy', severity: 'error', personId: st.personId, sessionId: o.id });
+        add({ code: 'person_busy', severity: 'error', personId: st.personId, sessionId: o.id, detail: where(o) });
       }
     }
     for (const l of ctx.leaves) {
@@ -179,6 +177,23 @@ export function checkLeave(leave: Leave, ctx: LeaveContext): Violation[] {
   }
 
   return out;
+}
+
+const staffKey = (s: Session) =>
+  s.staff
+    .filter((x) => !x.replaced)
+    .map((x) => `${x.personId}:${x.role}`)
+    .sort()
+    .join(',');
+
+/**
+ * Two sessions can become one when they are in the same room, back to back, have the
+ * same status (not cancelled) and the same people in the same roles.
+ */
+export function canMerge(a: Session, b: Session): boolean {
+  if (a.roomId !== b.roomId || a.status !== b.status || a.status === 'cancelled') return false;
+  const touching = a.end.getTime() === b.start.getTime() || b.end.getTime() === a.start.getTime();
+  return touching && staffKey(a) !== '' && staffKey(a) === staffKey(b);
 }
 
 export const hasErrors = (violations: Violation[]) => violations.some((v) => v.severity === 'error');

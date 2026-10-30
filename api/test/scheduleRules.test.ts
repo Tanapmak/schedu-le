@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   bangkokDates,
   bangkokMonth,
+  canMerge,
   checkLeave,
   checkSession,
   hasErrors,
@@ -119,6 +120,8 @@ describe('checkSession', () => {
       ['person_busy', 1],
       ['person_busy', 1],
     ]);
+    // The message can name the session in the way.
+    expect(v[1].detail).toEqual({ roomId: liveRoom.id, start: '2026-11-02T02:00:00.000Z', end: '2026-11-02T04:00:00.000Z' });
   });
 
   it('ignores itself when an existing session is edited', () => {
@@ -171,8 +174,9 @@ describe('checkSession', () => {
     expect(over).toMatchObject([{ code: 'over_max_hours', severity: 'warning', personId: 1, detail: { hours: 126, max: 124 } }]);
   });
 
-  it('warns when the length is not a whole number of slots', () => {
-    expect(codes(checkSession(session('2026-11-02T10:00', '2026-11-02T11:30'), ctx()))).toEqual(['off_slot']);
+  it('accepts sessions shorter or longer than the usual slot', () => {
+    expect(checkSession(session('2026-11-02T10:00', '2026-11-02T11:00'), ctx())).toEqual([]);
+    expect(checkSession(session('2026-11-02T10:00', '2026-11-02T13:30'), ctx())).toEqual([]);
   });
 
   it('rejects an empty or backwards period', () => {
@@ -258,5 +262,25 @@ describe('checkLeave', () => {
       'leave_overlap',
       'has_sessions',
     ]);
+  });
+});
+
+describe('canMerge', () => {
+  const a = session('2026-11-02T14:00', '2026-11-02T16:00', { id: 1 });
+
+  it('merges back-to-back sessions with the same room, people and status', () => {
+    expect(canMerge(a, session('2026-11-02T16:00', '2026-11-02T18:00', { id: 2 }))).toBe(true);
+    expect(canMerge(a, session('2026-11-02T12:00', '2026-11-02T14:00', { id: 2 }))).toBe(true);
+  });
+
+  it('keeps sessions apart when anything differs', () => {
+    expect(canMerge(a, session('2026-11-02T16:30', '2026-11-02T18:00'))).toBe(false); // gap
+    expect(canMerge(a, session('2026-11-02T16:00', '2026-11-02T18:00', { roomId: 99 }))).toBe(false);
+    expect(canMerge(a, session('2026-11-02T16:00', '2026-11-02T18:00', { status: 'draft' }))).toBe(false);
+    expect(
+      canMerge(a, session('2026-11-02T16:00', '2026-11-02T18:00', { staff: [{ personId: 1, role: 'mc' }, { personId: 5, role: 'pd' }] })),
+    ).toBe(false);
+    const cancelled = { status: 'cancelled' as const };
+    expect(canMerge({ ...a, ...cancelled }, session('2026-11-02T16:00', '2026-11-02T18:00', cancelled))).toBe(false);
   });
 });
