@@ -106,6 +106,13 @@ describe('checkSession', () => {
       ],
     });
     expect(checkSession(mcAsPd, ctx())).toMatchObject([{ code: 'role_not_allowed', personId: 2 }]);
+    const opsFillsIn = session('2026-11-02T10:00', '2026-11-02T12:00', {
+      staff: [
+        { personId: 1, role: 'mc' },
+        { personId: 6, role: 'pd' },
+      ],
+    });
+    expect(checkSession(opsFillsIn, ctx())).toEqual([]);
   });
 
   it('flags a room or person already booked, but not back-to-back or cancelled sessions', () => {
