@@ -59,7 +59,7 @@ export type SaveResult =
 export async function saveSession(
   pool: pg.Pool,
   input: SessionInput,
-  opts: { id?: number; confirm?: boolean } = {},
+  opts: { id?: number; confirm?: boolean; actorId?: number } = {},
 ): Promise<SaveResult> {
   const client = await pool.connect();
   try {
@@ -78,7 +78,7 @@ export async function saveSession(
       await client.query('ROLLBACK');
       return { ok: false, status: hasErrors(violations) ? 422 : 409, violations };
     }
-    const id = opts.id ?? (await insertSession(client, input));
+    const id = opts.id ?? (await insertSession(client, input, opts.actorId));
     if (opts.id !== undefined) await updateSession(client, opts.id, input);
     await client.query('COMMIT');
     return { ok: true, id, violations };

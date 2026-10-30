@@ -33,15 +33,17 @@ describe.skipIf(!url)('sessions API', () => {
   beforeEach(async () => {
     await pool.query('TRUNCATE session_staff, sessions, leave_requests, holidays, people RESTART IDENTITY CASCADE');
     await runSqlDir(pool, seedDir);
-    await pool.query(`INSERT INTO people (nickname, position) VALUES ('MC A', 'mc'), ('MC B', 'mc'), ('PD A', 'pd'), ('PD B', 'pd')`);
+    await pool.query(`INSERT INTO people (nickname, position, email, app_role) VALUES
+      ('MC A', 'mc', 'mc.a@example.com', 'mc'), ('MC B', 'mc', NULL, 'mc'), ('PD A', 'pd', NULL, 'pd'), ('PD B', 'pd', NULL, 'pd'),
+      ('Boss', 'operation', 'Boss@Example.com', 'admin')`);
     const { rows } = await pool.query('SELECT id::int, code FROM rooms');
     rooms = Object.fromEntries(rows.map((r) => [r.code, r.id]));
   });
 
-  const call = async (method: string, path: string, body?: unknown) => {
+  const call = async (method: string, path: string, body?: unknown, as?: string) => {
     const res = await fetch(base + path, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(as ? { 'x-dev-user': as } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     return { status: res.status, body: await res.json() };
@@ -55,6 +57,29 @@ describe.skipIf(!url)('sessions API', () => {
       { personId: mc, role: 'mc' },
       { personId: pd, role: 'pd' },
     ],
+  });
+
+  it('acts as the first admin by default in dev mode, matching emails without case', async () => {
+    expect((await call('GET', '/api/me')).body.user).toMatchObject({ nickname: 'Boss', role: 'admin' });
+    expect((await call('GET', '/api/me', undefined, 'boss@example.com')).body.user).toMatchObject({ nickname: 'Boss' });
+    expect(await call('GET', '/api/me', undefined, 'stranger@example.com')).toMatchObject({
+      status: 403,
+      body: { error: 'not_registered', email: 'stranger@example.com' },
+    });
+  });
+
+  it('lets only the admin change the schedule, and hides drafts from the team', async () => {
+    const mc = 'mc.a@example.com';
+    expect((await call('POST', '/api/sessions', draft('TTS 1', '2026-11-05T10:00', '2026-11-05T12:00'), mc)).status).toBe(403);
+    expect((await call('POST', '/api/publish', { from: '2026-11-01T00:00:00Z', to: '2026-12-01T00:00:00Z' }, mc)).status).toBe(403);
+
+    await call('POST', '/api/sessions', draft('TTS 1', '2026-11-05T10:00', '2026-11-05T12:00'));
+    const range = '/api/board?from=2026-11-05T00:00:00%2B07:00&to=2026-11-06T00:00:00%2B07:00';
+    expect((await call('GET', range, undefined, mc)).body.sessions).toHaveLength(0);
+    expect((await call('GET', range)).body.sessions).toHaveLength(1);
+
+    await call('POST', '/api/publish', { from: '2026-11-01T00:00:00Z', to: '2026-12-01T00:00:00Z' });
+    expect((await call('GET', range, undefined, mc)).body.sessions).toHaveLength(1);
   });
 
   it('creates a draft and shows it on the board', async () => {

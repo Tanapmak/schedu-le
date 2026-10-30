@@ -31,6 +31,10 @@ button { font: inherit; cursor: pointer; }
   color: #ccc;
 }
 .topbar nav button.active { background: var(--red); color: #fff; }
+.whoami { font-size: 13px; color: #ddd; }
+.whoami select { background: #222; color: #fff; border: 1px solid #444; border-radius: 8px; padding: 4px 6px; font: inherit; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.chip.mine { box-shadow: inset 4px 0 0 var(--red); }
 .lang { display: flex; gap: 2px; border: 1px solid #444; border-radius: 8px; padding: 2px; }
 .lang button.active { background: #fff; color: var(--ink); }
 
