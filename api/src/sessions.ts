@@ -29,6 +29,8 @@ export async function checkAgainstDb(db: Db, session: Session): Promise<Violatio
   const people = await listPeople(db);
   const room = rooms.find((r) => r.id === session.roomId);
   if (!room) return [{ code: 'unknown_room', severity: 'error' }];
+  // Postgres rejects a backwards range in the leave query, so answer before reaching it.
+  if (session.end <= session.start) return [{ code: 'invalid_period', severity: 'error' }];
   // The whole month is needed for the hour cap; a session may also spill into the next month.
   const { from } = monthRange(session.start);
   const to = new Date(Math.max(monthRange(session.start).to.getTime(), session.end.getTime()));

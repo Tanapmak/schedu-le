@@ -74,6 +74,11 @@ describe.skipIf(!url)('sessions API', () => {
     });
   });
 
+  it('answers a backwards period with a rule code, not a server error', async () => {
+    const res = await call('POST', '/api/sessions', draft('TTS 1', '2026-11-05T12:00', '2026-11-05T10:00'));
+    expect(res).toMatchObject({ status: 422, body: { violations: [{ code: 'invalid_period' }] } });
+  });
+
   it('refuses clashes with the rule codes and saves nothing', async () => {
     await call('POST', '/api/sessions', draft('TTS 1', '2026-11-05T10:00', '2026-11-05T12:00'));
     const clash = await call('POST', '/api/sessions', draft('SHP 1', '2026-11-05T11:00', '2026-11-05T13:00', 2, 3));

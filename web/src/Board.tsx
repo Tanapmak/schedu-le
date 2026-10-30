@@ -329,7 +329,7 @@ function DayRow({ lang, room, date, sessions, draggingId, nameOf, onDragStart, o
           return (
             <div
               key={s.id}
-              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.status === 'cancelled' ? '' : ' draggable'}`}
+              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.status === 'cancelled' ? ' cancelled' : ' draggable'}`}
               style={{ left: `${(startMin / SPAN_MIN) * 100}%`, width: `${((endMin - startMin) / SPAN_MIN) * 100}%` }}
               onPointerDown={(e) => onDragStart(e, s, 'move')}
               onClick={(e) => e.stopPropagation()}
