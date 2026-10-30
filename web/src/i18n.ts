@@ -59,7 +59,6 @@ const strings = {
 /** Messages for rule violation codes from the API. */
 const violationText: Record<string, Record<Lang, string>> = {
   invalid_period: { th: 'เวลาจบต้องหลังเวลาเริ่ม', en: 'End must be after start', zh: '结束时间必须晚于开始时间' },
-  off_slot: { th: 'ความยาวไม่ลงช่อง {slotMinutes} นาที', en: 'Length is not a multiple of {slotMinutes} min', zh: '时长不是{slotMinutes}分钟的整数倍' },
   room_inactive: { th: 'ห้องนี้ปิดใช้งานแล้ว', en: 'This room is inactive', zh: '该直播间已停用' },
   unknown_room: { th: 'ไม่พบห้องนี้', en: 'Room not found', zh: '找不到直播间' },
   missing_mc: { th: 'ต้องเลือก MC', en: 'Choose an MC', zh: '请选择主播' },

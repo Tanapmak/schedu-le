@@ -62,7 +62,7 @@ export interface SessionInput {
   start: string;
   end: string;
   note?: string | null;
-  staff: { personId: number; role: 'mc' | 'pd' }[];
+  staff: { personId: number; role: 'mc' | 'pd'; replaced?: boolean }[];
 }
 
 export interface SaveResponse {

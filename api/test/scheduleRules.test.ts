@@ -171,8 +171,9 @@ describe('checkSession', () => {
     expect(over).toMatchObject([{ code: 'over_max_hours', severity: 'warning', personId: 1, detail: { hours: 126, max: 124 } }]);
   });
 
-  it('warns when the length is not a whole number of slots', () => {
-    expect(codes(checkSession(session('2026-11-02T10:00', '2026-11-02T11:30'), ctx()))).toEqual(['off_slot']);
+  it('accepts sessions shorter or longer than the usual slot', () => {
+    expect(checkSession(session('2026-11-02T10:00', '2026-11-02T11:00'), ctx())).toEqual([]);
+    expect(checkSession(session('2026-11-02T10:00', '2026-11-02T13:30'), ctx())).toEqual([]);
   });
 
   it('rejects an empty or backwards period', () => {

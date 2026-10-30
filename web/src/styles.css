@@ -122,3 +122,8 @@ label.inline { display: flex; gap: 6px; align-items: center; }
   .topbar { justify-content: space-between; }
   .topbar nav { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; }
 }
+.block-pos.draggable { cursor: grab; touch-action: none; }
+.block-pos.dragging { opacity: 0.75; z-index: 2; cursor: grabbing; }
+.block-pos .chip { pointer-events: none; }
+.block-pos .resize { position: absolute; top: 0; right: 0; width: 10px; height: 100%; cursor: ew-resize; touch-action: none; }
+.block-pos .resize::after { content: ''; position: absolute; top: 30%; bottom: 30%; right: 4px; width: 2px; border-radius: 1px; background: currentColor; opacity: 0.35; }

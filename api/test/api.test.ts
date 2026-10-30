@@ -84,11 +84,12 @@ describe.skipIf(!url)('sessions API', () => {
   });
 
   it('asks for confirmation on warnings, then saves', async () => {
-    const offSlot = draft('TTS 1', '2026-11-05T10:00', '2026-11-05T11:30');
-    const first = await call('POST', '/api/sessions', offSlot);
+    await pool.query(`INSERT INTO leave_requests (person_id, period) VALUES (1, tstzrange('2026-11-05 00:00+07', '2026-11-06 00:00+07'))`);
+    const withPendingLeave = draft('TTS 1', '2026-11-05T10:00', '2026-11-05T11:00');
+    const first = await call('POST', '/api/sessions', withPendingLeave);
     expect(first.status).toBe(409);
-    expect(first.body.violations).toMatchObject([{ code: 'off_slot', severity: 'warning' }]);
-    const confirmed = await call('POST', '/api/sessions', { ...offSlot, confirm: true });
+    expect(first.body.violations).toMatchObject([{ code: 'leave_pending', severity: 'warning', personId: 1 }]);
+    const confirmed = await call('POST', '/api/sessions', { ...withPendingLeave, confirm: true });
     expect(confirmed.status).toBe(201);
   });
 

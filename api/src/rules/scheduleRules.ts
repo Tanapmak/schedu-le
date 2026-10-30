@@ -53,11 +53,6 @@ export function checkSession(session: Session, ctx: SessionContext): Violation[]
     return out;
   }
 
-  const slotMs = ctx.rules.sessionSlotMinutes * 60_000;
-  if ((session.end.getTime() - session.start.getTime()) % slotMs !== 0) {
-    add({ code: 'off_slot', severity: 'warning', detail: { slotMinutes: ctx.rules.sessionSlotMinutes } });
-  }
-
   if (!ctx.room.isActive) add({ code: 'room_inactive', severity: 'error' });
 
   const working = session.staff.filter((s) => !s.replaced);

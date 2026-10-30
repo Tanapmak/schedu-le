@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { api, type Board as BoardData, type Person, type Room, type Session } from './api';
-import { t, type Lang } from './i18n';
+import { t, violationMessage, type Lang } from './i18n';
 import { SessionForm, type FormTarget } from './SessionForm';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk } from './time';
 
@@ -11,6 +11,15 @@ const DAY_START_H = 8;
 const DAY_END_H = 26;
 const SPAN_MIN = (DAY_END_H - DAY_START_H) * 60;
 const pad = (n: number) => String(n).padStart(2, '0');
+const SNAP_MS = 30 * 60_000; // drag moves and resizes in 30-minute steps
+
+type DragMode = 'move' | 'resize';
+interface Preview {
+  id: number;
+  roomId: number;
+  start: Date;
+  end: Date;
+}
 
 interface Props {
   lang: Lang;
@@ -24,6 +33,7 @@ export function Board({ lang, rooms, people }: Props) {
   const [data, setData] = useState<BoardData>();
   const [failed, setFailed] = useState(false);
   const [form, setForm] = useState<FormTarget>();
+  const [preview, setPreview] = useState<Preview>();
 
   const days = useMemo(
     () => (view === 'day' ? [date] : Array.from({ length: 7 }, (_, i) => addDays(mondayOf(date), i))),
@@ -58,6 +68,79 @@ export function Board({ lang, rooms, people }: Props) {
     new Date(x.start) < bkkInstant(addDays(day, 1), '00:00') && new Date(x.end) > bkkInstant(day, '00:00');
   const leavesOn = (day: string) => (data?.leaves ?? []).filter((l) => onDay(day, l));
   const holidayOn = (day: string) => (data?.holidays ?? []).find((h) => onDay(day, h));
+
+  // Drag a session to move it (time and room); drag its right edge to change the end time.
+  // A press without movement opens the form instead.
+  function startDrag(e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) {
+    if (e.button !== 0 || s.status === 'cancelled') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const lane = e.currentTarget.closest('.lane');
+    if (!lane) return;
+    const width = lane.getBoundingClientRect().width;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const start0 = new Date(s.start).getTime();
+    const end0 = new Date(s.end).getTime();
+    let moved = false;
+    let latest: Preview = { id: s.id, roomId: s.roomId, start: new Date(start0), end: new Date(end0) };
+
+    const onMove = (ev: PointerEvent) => {
+      if (!moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      moved = true;
+      const delta = Math.round(((ev.clientX - x0) / width) * SPAN_MIN * 60_000 / SNAP_MS) * SNAP_MS;
+      if (mode === 'move') {
+        const over = document
+          .elementsFromPoint(ev.clientX, ev.clientY)
+          .find((el): el is HTMLElement => el instanceof HTMLElement && el.dataset.roomId !== undefined);
+        const roomId = over ? Number(over.dataset.roomId) : latest.roomId;
+        latest = { id: s.id, roomId, start: new Date(start0 + delta), end: new Date(end0 + delta) };
+      } else {
+        latest = { id: s.id, roomId: s.roomId, start: new Date(start0), end: new Date(Math.max(end0 + delta, start0 + SNAP_MS)) };
+      }
+      setPreview(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (!moved) {
+        setForm({ mode: 'edit', session: s });
+        return;
+      }
+      void commitDrag(s, latest);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
+  async function commitDrag(s: Session, to: Preview) {
+    const unchanged = to.roomId === s.roomId && to.start.getTime() === new Date(s.start).getTime() && to.end.getTime() === new Date(s.end).getTime();
+    if (!unchanged) {
+      const input = {
+        roomId: to.roomId,
+        start: to.start.toISOString(),
+        end: to.end.toISOString(),
+        note: s.note,
+        staff: s.staff,
+      };
+      let res = await api.save(input, { id: s.id });
+      const text = res.violations.map((v) => `• ${violationMessage(lang, v, nameOf)}`).join('\n');
+      if (!res.ok && res.violations.every((v) => v.severity === 'warning')) {
+        if (window.confirm(`${text}\n\n${t(lang, 'saveAnyway')}?`)) res = await api.save(input, { id: s.id, confirm: true });
+      } else if (!res.ok) {
+        window.alert(text);
+      }
+    }
+    setPreview(undefined);
+    load();
+  }
+
+  // Sessions as they should look right now, with the one being dragged at its new place.
+  const placed = (data?.sessions ?? []).map((x) =>
+    preview && x.id === preview.id
+      ? { ...x, roomId: preview.roomId, start: preview.start.toISOString(), end: preview.end.toISOString() }
+      : x,
+  );
 
   return (
     <section className="board">
@@ -107,9 +190,10 @@ export function Board({ lang, rooms, people }: Props) {
                 lang={lang}
                 room={room}
                 date={date}
-                sessions={data.sessions.filter((s) => s.roomId === room.id)}
+                sessions={placed.filter((s) => s.roomId === room.id)}
+                draggingId={preview?.id}
                 nameOf={nameOf}
-                onOpen={(s) => setForm({ mode: 'edit', session: s })}
+                onDragStart={startDrag}
                 onEmpty={(hour) =>
                   setForm({ mode: 'new', roomId: room.id, date, start: `${pad(hour % 24)}:00`, end: `${pad((hour + 2) % 24)}:00` })
                 }
@@ -189,11 +273,12 @@ interface RowProps {
   date: string;
   sessions: Session[];
   nameOf: (id: number) => string;
-  onOpen: (s: Session) => void;
+  draggingId?: number;
+  onDragStart: (e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) => void;
   onEmpty: (hour: number) => void;
 }
 
-function DayRow({ lang, room, date, sessions, nameOf, onOpen, onEmpty }: RowProps) {
+function DayRow({ lang, room, date, sessions, draggingId, nameOf, onDragStart, onEmpty }: RowProps) {
   return (
     <>
       <div className="room-label">
@@ -202,6 +287,7 @@ function DayRow({ lang, room, date, sessions, nameOf, onOpen, onEmpty }: RowProp
       </div>
       <div
         className="lane"
+        data-room-id={room.id}
         onClick={(e) => {
           const box = e.currentTarget.getBoundingClientRect();
           const hour = DAY_START_H + Math.floor(((e.clientX - box.left) / box.width) * (DAY_END_H - DAY_START_H));
@@ -215,10 +301,15 @@ function DayRow({ lang, room, date, sessions, nameOf, onOpen, onEmpty }: RowProp
           return (
             <div
               key={s.id}
-              className="block-pos"
+              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.status === 'cancelled' ? '' : ' draggable'}`}
               style={{ left: `${(startMin / SPAN_MIN) * 100}%`, width: `${((endMin - startMin) / SPAN_MIN) * 100}%` }}
+              onPointerDown={(e) => onDragStart(e, s, 'move')}
+              onClick={(e) => e.stopPropagation()}
             >
-              <SessionChip lang={lang} session={s} room={room} nameOf={nameOf} onOpen={() => onOpen(s)} />
+              <SessionChip lang={lang} session={s} room={room} nameOf={nameOf} />
+              {s.status !== 'cancelled' && (
+                <span className="resize" aria-hidden="true" onPointerDown={(e) => onDragStart(e, s, 'resize')} />
+              )}
             </div>
           );
         })}
@@ -232,7 +323,7 @@ interface ChipProps {
   session: Session;
   room: Room;
   nameOf: (id: number) => string;
-  onOpen: () => void;
+  onOpen?: () => void; // day view opens through the drag handler instead
 }
 
 function SessionChip({ lang, session: s, room, nameOf, onOpen }: ChipProps) {
@@ -246,7 +337,7 @@ function SessionChip({ lang, session: s, room, nameOf, onOpen }: ChipProps) {
       title={s.note ?? undefined}
       onClick={(e) => {
         e.stopPropagation();
-        onOpen();
+        onOpen?.();
       }}
     >
       <span className="who">{names || '—'}</span>

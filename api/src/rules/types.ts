@@ -9,7 +9,7 @@ export interface Rules {
   kpiHours: Record<StaffRole, number>;
   maxHours: Record<StaffRole, number>;
   leaveQuotaPerDay: Record<StaffRole, number>;
-  sessionSlotMinutes: number;
+  sessionSlotMinutes: number; // default length for a new session
 }
 
 export interface Person {
