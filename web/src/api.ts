@@ -14,8 +14,10 @@ export interface Person {
   id: number;
   nickname: string;
   position: 'mc' | 'pd' | 'operation';
+  employment: 'full_time' | 'intern' | 'freelance' | 'guest';
   isActive: boolean;
   maxHours: number | null;
+  kpiHours: number | null;
 }
 
 export interface Staff {
@@ -46,6 +48,7 @@ export interface Leave {
 }
 
 export interface Holiday {
+  id: number;
   name: string;
   start: string;
   end: string;
@@ -69,6 +72,60 @@ export interface SaveResponse {
   ok: boolean;
   id?: number;
   violations: ViolationLike[];
+}
+
+export type RequestStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+export interface LeaveRequest {
+  id: number;
+  personId: number;
+  start: string;
+  end: string;
+  kind: 'normal' | 'urgent';
+  reason: string | null;
+  status: RequestStatus;
+  createdAt: string;
+  decidedBy: string | null;
+}
+
+export interface SessionRef {
+  id: number;
+  roomId: number;
+  start: string;
+  end: string;
+}
+
+export interface SwapRequest {
+  id: number;
+  requesterId: number;
+  targetId: number;
+  reason: string | null;
+  status: RequestStatus;
+  createdAt: string;
+  session: SessionRef;
+  targetSession: SessionRef | null;
+}
+
+/** Leave, swap and decision calls: ok, or the rule codes that blocked (errors) or need confirming (warnings). */
+export interface Outcome {
+  ok: boolean;
+  id?: number;
+  violations: ViolationLike[];
+}
+
+export interface LeaveInput {
+  start: string;
+  end: string;
+  kind: 'normal' | 'urgent';
+  reason?: string;
+  personId?: number;
+}
+
+export interface SwapInput {
+  sessionId: number;
+  targetId: number;
+  targetSessionId?: number | null;
+  reason?: string;
 }
 
 export type Role = 'admin' | 'mc' | 'pd' | 'viewer';
@@ -152,6 +209,21 @@ export const api = {
   merge: async (id: number, withId: number) =>
     (await request<{ ok: boolean }>('POST', `/api/sessions/${id}/merge`, { withId })).data,
   remove: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/sessions/${id}`)).data,
+  leave: async (q: { mine?: boolean; status?: string } = {}) =>
+    (await request<LeaveRequest[]>('GET', `/api/leave?${new URLSearchParams({ ...(q.mine ? { mine: '1' } : {}), ...(q.status ? { status: q.status } : {}) })}`)).data,
+  fileLeave: async (input: LeaveInput, confirm = false) => (await request<Outcome>('POST', '/api/leave', { ...input, confirm })).data,
+  decideLeave: async (id: number, decision: 'approve' | 'reject', confirm = false) =>
+    (await request<Outcome>('POST', `/api/leave/${id}/decision`, { decision, confirm })).data,
+  withdrawLeave: async (id: number) => (await request<{ ok: boolean }>('POST', `/api/leave/${id}/withdraw`, {})).data,
+  swaps: async (q: { mine?: boolean; status?: string } = {}) =>
+    (await request<SwapRequest[]>('GET', `/api/swaps?${new URLSearchParams({ ...(q.mine ? { mine: '1' } : {}), ...(q.status ? { status: q.status } : {}) })}`)).data,
+  fileSwap: async (input: SwapInput) => (await request<Outcome>('POST', '/api/swaps', input)).data,
+  decideSwap: async (id: number, decision: 'approve' | 'reject', confirm = false) =>
+    (await request<Outcome>('POST', `/api/swaps/${id}/decision`, { decision, confirm })).data,
+  withdrawSwap: async (id: number) => (await request<{ ok: boolean }>('POST', `/api/swaps/${id}/withdraw`, {})).data,
+  addHoliday: async (name: string, start: string, end: string) =>
+    (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
+  removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,
 };

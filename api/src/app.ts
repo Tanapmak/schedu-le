@@ -5,8 +5,16 @@ import type pg from 'pg';
 import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.js';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
+import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
+
+const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const decisionOf = (v: unknown) => {
+  if (v !== 'approve' && v !== 'reject') throw new BadRequest('decision must be approve or reject');
+  return v;
+};
+const send = (res: Response, out: Outcome, created = false) => res.status(out.ok ? (created ? 201 : 200) : out.status).json(out);
 
 const MAX_RANGE_DAYS = 62;
 
@@ -119,6 +127,89 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig()) {
       [from, to],
     );
     res.json({ published: rowCount });
+  });
+
+  // ---- Leave: MC/PD file for themselves, the admin may file for anyone and decides.
+  app.get('/api/leave', async (req, res) => {
+    const isAdmin = req.user!.role === 'admin';
+    const mine = req.query.mine === '1' || !isAdmin;
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const from = req.query.from ? parseDate(req.query.from, 'from') : undefined;
+    const to = req.query.to ? parseDate(req.query.to, 'to') : undefined;
+    res.json(await listLeave(pool, { personId: mine ? req.user!.id : undefined, status, from, to }));
+  });
+
+  app.post('/api/leave', async (req, res) => {
+    const isAdmin = req.user!.role === 'admin';
+    const personId = isAdmin && req.body.personId !== undefined ? parseId(req.body.personId, 'personId') : req.user!.id;
+    const kind = req.body.kind === 'urgent' ? 'urgent' : 'normal';
+    const input = { personId, start: parseDate(req.body.start, 'start'), end: parseDate(req.body.end, 'end'), kind, reason: text(req.body.reason) } as const;
+    send(res, await fileLeave(pool, input, { confirm: req.body.confirm === true, actorId: req.user!.id }), true);
+  });
+
+  app.post('/api/leave/:id/decision', requireAdmin, async (req, res) => {
+    const out = await decideLeave(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), {
+      confirm: req.body.confirm === true,
+      actorId: req.user!.id,
+    });
+    send(res, out);
+  });
+
+  app.post('/api/leave/:id/withdraw', async (req, res) => {
+    const ok = await withdrawLeave(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: req.user!.role === 'admin' });
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  // ---- Shift swaps: hand my place to someone, or trade places with them; the admin approves.
+  app.get('/api/swaps', async (req, res) => {
+    const isAdmin = req.user!.role === 'admin';
+    const mine = req.query.mine === '1' || !isAdmin;
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+    res.json(await listSwaps(pool, { personId: mine ? req.user!.id : undefined, status }));
+  });
+
+  app.post('/api/swaps', async (req, res) => {
+    const out = await fileSwap(pool, {
+      requesterId: req.user!.id,
+      sessionId: parseId(req.body.sessionId, 'sessionId'),
+      targetId: parseId(req.body.targetId, 'targetId'),
+      targetSessionId: req.body.targetSessionId == null ? null : parseId(req.body.targetSessionId, 'targetSessionId'),
+      reason: text(req.body.reason),
+    });
+    send(res, out, true);
+  });
+
+  app.post('/api/swaps/:id/decision', requireAdmin, async (req, res) => {
+    const out = await decideSwap(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), {
+      confirm: req.body.confirm === true,
+      actorId: req.user!.id,
+    });
+    send(res, out);
+  });
+
+  app.post('/api/swaps/:id/withdraw', async (req, res) => {
+    const ok = await withdrawSwap(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: req.user!.role === 'admin' });
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  // ---- Team off days (holidays). They block sessions; existing sessions on the day are reported back.
+  app.post('/api/holidays', requireAdmin, async (req, res) => {
+    const name = text(req.body.name);
+    if (!name) throw new BadRequest('name is required');
+    const start = parseDate(req.body.start, 'start');
+    const end = parseDate(req.body.end, 'end');
+    if (end <= start) throw new BadRequest('end must be after start');
+    const { rows } = await pool.query(
+      `INSERT INTO holidays (name, period, created_by) VALUES ($1, tstzrange($2, $3), $4) RETURNING id::int`,
+      [name, start, end, req.user!.id],
+    );
+    const clashes = (await sessionsBetween(pool, start, end)).filter((s) => s.status !== 'cancelled');
+    res.status(201).json({ ok: true, id: rows[0].id, sessionsOnDay: clashes.map((s) => s.id) });
+  });
+
+  app.delete('/api/holidays/:id', requireAdmin, async (req, res) => {
+    const { rowCount } = await pool.query('DELETE FROM holidays WHERE id = $1', [parseId(req.params.id, 'id')]);
+    res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
   });
 
   app.use('/api', (_req, res) => {

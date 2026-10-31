@@ -26,16 +26,26 @@ export async function listRooms(db: Db): Promise<RoomRow[]> {
   }));
 }
 
-export async function listPeople(db: Db): Promise<Person[]> {
+export type Employment = 'full_time' | 'intern' | 'freelance' | 'guest';
+
+export interface PersonRow extends Person {
+  employment: Employment;
+  kpiHours: number | null;
+}
+
+export async function listPeople(db: Db): Promise<PersonRow[]> {
   const { rows } = await db.query(
-    `SELECT id::int, nickname, position, is_active, max_hours::float8 AS max_hours FROM people ORDER BY nickname`,
+    `SELECT id::int, nickname, position, employment, is_active, max_hours::float8 AS max_hours, kpi_hours::float8 AS kpi_hours
+       FROM people ORDER BY nickname`,
   );
   return rows.map((r) => ({
     id: r.id,
     nickname: r.nickname,
     position: r.position,
+    employment: r.employment,
     isActive: r.is_active,
     maxHours: r.max_hours,
+    kpiHours: r.kpi_hours,
   }));
 }
 
@@ -93,9 +103,10 @@ export async function leavesBetween(db: Db, from: Date, to: Date): Promise<Leave
   return rows.map((r) => ({ id: r.id, personId: r.person_id, start: r.start, end: r.end, status: r.status, kind: r.kind }));
 }
 
-export async function holidaysBetween(db: Db, from: Date, to: Date): Promise<Holiday[]> {
+export async function holidaysBetween(db: Db, from: Date, to: Date): Promise<(Holiday & { id: number })[]> {
   const { rows } = await db.query(
-    `SELECT name, lower(period) AS start, upper(period) AS "end" FROM holidays WHERE period && tstzrange($1, $2)`,
+    `SELECT id::int, name, lower(period) AS start, upper(period) AS "end" FROM holidays
+      WHERE period && tstzrange($1, $2) ORDER BY lower(period)`,
     [from, to],
   );
   return rows;
