@@ -159,6 +159,58 @@ export interface Me {
   user: User;
   mode: 'iap' | 'dev';
   devUsers?: { nickname: string; email: string; role: Role }[];
+  /** False when no AI key is set on the server: results are typed in by hand. */
+  aiReader?: boolean;
+}
+
+export const METRICS = ['gmv', 'orders', 'itemsSold', 'views', 'avgViewSec', 'productClicks', 'buyers', 'addToCart', 'adsCost', 'durationMin'] as const;
+export type Metric = (typeof METRICS)[number];
+
+export interface Reading {
+  platform: string;
+  account_name: string | null;
+  live_started_at: string | null;
+  duration_min: number | null;
+  gmv: number | null;
+  orders: number | null;
+  items_sold: number | null;
+  views: number | null;
+  avg_view_sec: number | null;
+  product_clicks: number | null;
+  buyers: number | null;
+  add_to_cart: number | null;
+  ads_cost: number | null;
+  extra: { label: string; value: string }[];
+  unsure: string[];
+}
+
+export interface ResultRow extends Partial<Record<Metric, number | null>> {
+  id: number;
+  sessionId: number | null;
+  roomId: number;
+  broadcastId: number;
+  isNewBroadcast: boolean;
+  capturedAt: string;
+  liveStartedAt: string | null;
+  extraMetrics: Record<string, string>;
+  source: 'ai' | 'manual';
+  note: string | null;
+  gmvDelta: number | null;
+  ordersDelta: number | null;
+  viewsDelta: number | null;
+  recordedBy: string | null;
+}
+
+export interface ResultInput {
+  sessionId: number;
+  capturedAt: string;
+  liveStartedAt: string | null;
+  isNewBroadcast: boolean;
+  metrics: Partial<Record<Metric, number>>;
+  extraMetrics: Record<string, string>;
+  source: 'ai' | 'manual';
+  aiReading: Reading | null;
+  note?: string;
 }
 
 /** Sign-in problems: 401 not signed in, 403 signed in but not on the team list. */
@@ -242,6 +294,14 @@ export const api = {
     (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
   removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,
   hours: async (month: string) => (await request<{ month: string; rows: HoursRow[] }>('GET', `/api/hours?month=${month}`)).data.rows,
+  readScreenshot: async (sessionId: number, image: string) =>
+    request<{ reading: Reading; liveStartedAt: string | null; isNewBroadcast: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image }),
+  suggestFlag: async (sessionId: number, liveStartedAt: string | null) =>
+    (await request<{ isNewBroadcast: boolean }>('GET', `/api/results/flag?sessionId=${sessionId}${liveStartedAt ? `&liveStartedAt=${encodeURIComponent(liveStartedAt)}` : ''}`)).data.isNewBroadcast,
+  saveResult: async (input: ResultInput) => request<{ ok: boolean; id: number; message?: string }>('POST', '/api/results', input),
+  results: async (from: Date, to: Date) =>
+    (await request<ResultRow[]>('GET', `/api/results?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)).data,
+  deleteResult: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/results/${id}`)).data,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,
 };

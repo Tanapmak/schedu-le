@@ -3,11 +3,19 @@ import type { Server } from 'node:http';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
+import type { ScreenshotReader } from '../src/vision.js';
 import { migrationsDir, seedDir } from '../src/paths.js';
 import { migrate, runSqlDir } from '../src/sqlFiles.js';
 
 // Needs a throwaway Postgres: this test drops and recreates the public schema.
 const url = process.env.TEST_DATABASE_URL;
+
+// Stands in for the Claude API: returns what a TikTok dashboard screenshot would read as.
+const fakeReader: ScreenshotReader = async () => ({
+  platform: 'tiktok', account_name: 'TCL', live_started_at: '2030-03-01 10:02', duration_min: 58,
+  gmv: 12500, orders: 9, items_sold: 11, views: 4300, avg_view_sec: 41, product_clicks: 320, buyers: 8,
+  add_to_cart: 25, ads_cost: null, extra: [{ label: 'GPM', value: '2.9K' }], unsure: [],
+});
 
 describe.skipIf(!url)('leave, swaps and off days', () => {
   let pool: pg.Pool;
@@ -21,7 +29,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const client = await pool.connect();
     await migrate(client, migrationsDir);
     client.release();
-    server = createApp(pool).listen(0);
+    server = createApp(pool, { mode: 'dev' }, { readScreenshot: fakeReader }).listen(0);
     base = `http://localhost:${(server.address() as AddressInfo).port}`;
   });
 
@@ -31,7 +39,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE swap_requests, session_staff, sessions, leave_requests, holidays, people RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE live_results, swap_requests, session_staff, sessions, leave_requests, holidays, people RESTART IDENTITY CASCADE');
     await runSqlDir(pool, seedDir);
     await pool.query(`INSERT INTO people (nickname, position, email, app_role) VALUES
       ('MC A', 'mc', 'mc.a@example.com', 'mc'), ('MC B', 'mc', 'mc.b@example.com', 'mc'), ('PD A', 'pd', 'pd.a@example.com', 'pd'), ('PD B', 'pd', NULL, 'pd'),
@@ -176,5 +184,29 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const own = await call('GET', '/api/hours?month=2030-02', undefined, MC_A);
     expect(own.body.rows).toHaveLength(1);
     expect((await call('GET', '/api/hours?month=2030-13')).status).toBe(400);
+  });
+
+  it('reads a screenshot into a draft, then saves readings with per-broadcast deltas', async () => {
+    const s = await published('TTS 1', '2030-03-01T10:00', '2030-03-01T14:00', 1, 3);
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    expect((await call('POST', '/api/results/read', { sessionId: s, image: png }, MC_B)).status).toBe(403); // not her session
+    const read = await call('POST', '/api/results/read', { sessionId: s, image: png }, 'pd.a@example.com');
+    expect(read.body).toMatchObject({ reading: { gmv: 12500 }, liveStartedAt: '2030-03-01T03:02:00.000Z', isNewBroadcast: true });
+    expect((await call('POST', '/api/results/read', { sessionId: s, image: 'nope' }, 'pd.a@example.com')).status).toBe(400);
+
+    const save = (capturedAt: string, gmv: number, orders: number, isNewBroadcast: boolean) =>
+      call('POST', '/api/results', {
+        sessionId: s, capturedAt: `${capturedAt}:00+07:00`, liveStartedAt: read.body.liveStartedAt, isNewBroadcast,
+        metrics: { gmv, orders }, source: 'ai',
+      }, 'pd.a@example.com');
+    expect((await save('2030-03-01T11:00', 12500, 9, true)).status).toBe(201);
+    // Same start time: the flag suggestion says it continues.
+    expect((await call('GET', `/api/results/flag?sessionId=${s}&liveStartedAt=2030-03-01T03:02:00Z`, undefined, 'pd.a@example.com')).body.isNewBroadcast).toBe(false);
+    expect((await save('2030-03-01T12:00', 20000, 15, false)).status).toBe(201);
+    expect((await save('2030-03-01T13:00', 3000, 2, true)).status).toBe(201); // restarted the live
+
+    const list = await call('GET', '/api/results?from=2030-03-01T00:00:00%2B07:00&to=2030-03-02T00:00:00%2B07:00');
+    expect(list.body.map((r: { gmvDelta: number }) => r.gmvDelta)).toEqual([3000, 7500, 12500]);
+    expect((await call('POST', '/api/results', { sessionId: s, isNewBroadcast: true, metrics: { gmv: -1 } }, 'pd.a@example.com')).status).toBe(400);
   });
 });

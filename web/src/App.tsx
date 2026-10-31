@@ -4,6 +4,7 @@ import { Board } from './Board';
 import { HoursPage, MyHoursCard } from './Hours';
 import { LeavePage } from './LeavePage';
 import { MySchedule } from './MySchedule';
+import { ResultsPage } from './Results';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 const pages: StringKey[] = ['schedule', 'mySchedule', 'leave', 'hours', 'results'];
@@ -121,6 +122,8 @@ export function App() {
           </MySchedule>
         ) : page === 'hours' && me ? (
           <HoursPage lang={lang} user={me.user} />
+        ) : page === 'results' && rooms && people && me ? (
+          <ResultsPage lang={lang} rooms={rooms} people={people} user={me.user} aiReader={Boolean(me.aiReader)} />
         ) : page === 'leave' && rooms && people && me ? (
           <LeavePage lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : (

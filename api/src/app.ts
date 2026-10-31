@@ -6,6 +6,8 @@ import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
 import { hoursReport, isMonth } from './hours.js';
+import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
+import { claudeReader, type ImageMediaType, type ScreenshotReader } from './vision.js';
 import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
@@ -19,9 +21,17 @@ const send = (res: Response, out: Outcome, created = false) => res.status(out.ok
 
 const MAX_RANGE_DAYS = 62;
 
-export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig()) {
+export interface AppOptions {
+  /** Reads live-dashboard screenshots. Undefined when no AI key is set: results are typed in by hand. */
+  readScreenshot?: ScreenshotReader;
+}
+
+const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
+
+export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: AppOptions = { readScreenshot: claudeReader() }) {
   const app = express();
-  app.use(express.json());
+  // Screenshots arrive as base64 data URLs (the web app shrinks them to ~2000 px first).
+  app.use(express.json({ limit: '8mb' }));
 
   app.get('/api/health', async (_req, res) => {
     try {
@@ -41,7 +51,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig()) {
       auth.mode === 'dev'
         ? (await pool.query(`SELECT nickname, email, app_role AS role FROM people WHERE is_active AND email IS NOT NULL ORDER BY id`)).rows
         : undefined;
-    res.json({ user: req.user, mode: auth.mode, devUsers });
+    res.json({ user: req.user, mode: auth.mode, devUsers, aiReader: Boolean(opts.readScreenshot) });
   });
 
   app.get('/api/rooms', async (_req, res) => {
@@ -135,6 +145,62 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig()) {
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
     const rows = await hoursReport(pool, req.query.month);
     res.json({ month: req.query.month, rows: req.user!.role === 'admin' ? rows : rows.filter((r) => r.personId === req.user!.id) });
+  });
+
+  // ---- Live results. The AI reads a screenshot into a draft; nothing is saved until the PD confirms.
+  app.post('/api/results/read', async (req, res) => {
+    const sessionId = parseId(req.body.sessionId, 'sessionId');
+    const { session, allowed } = await canRecord(pool, sessionId, req.user!);
+    if (!session) return void res.status(404).json({ error: 'not_found' });
+    if (!allowed) return void res.status(403).json({ error: 'not_your_session' });
+    if (!opts.readScreenshot) return void res.status(503).json({ error: 'ai_not_configured' });
+    const m = typeof req.body.image === 'string' ? IMAGE_DATA_URL.exec(req.body.image) : null;
+    if (!m) throw new BadRequest('image must be a base64 data URL (png, jpeg, webp or gif)');
+    let reading;
+    try {
+      reading = await opts.readScreenshot({ mediaType: m[1] as ImageMediaType, base64: m[2] });
+    } catch (err) {
+      console.error('screenshot read failed', err);
+      return void res.status(502).json({ error: 'ai_failed' });
+    }
+    // The dashboard shows Bangkok time without a zone.
+    const started = reading.live_started_at && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(reading.live_started_at)
+      ? new Date(`${reading.live_started_at.replace(' ', 'T')}:00+07:00`)
+      : null;
+    const liveStartedAt = started && !Number.isNaN(started.getTime()) ? started : null;
+    const isNewBroadcast = await suggestNewBroadcast(pool, session.roomId, liveStartedAt, new Date());
+    res.json({ reading, liveStartedAt, isNewBroadcast });
+  });
+
+  // Suggests the Session Flag for a hand-typed reading.
+  app.get('/api/results/flag', async (req, res) => {
+    const sessionId = parseId(req.query.sessionId, 'sessionId');
+    const { session } = await canRecord(pool, sessionId, req.user!);
+    if (!session) return void res.status(404).json({ error: 'not_found' });
+    const started = req.query.liveStartedAt ? parseDate(req.query.liveStartedAt, 'liveStartedAt') : null;
+    res.json({ isNewBroadcast: await suggestNewBroadcast(pool, session.roomId, started, new Date()) });
+  });
+
+  app.post('/api/results', async (req, res) => {
+    const sessionId = parseId(req.body.sessionId, 'sessionId');
+    const { session, allowed } = await canRecord(pool, sessionId, req.user!);
+    if (!session) return void res.status(404).json({ error: 'not_found' });
+    if (!allowed) return void res.status(403).json({ error: 'not_your_session' });
+    const input = { ...parseResultInput(req.body), sessionId };
+    const id = await saveResult(pool, session.roomId, input, req.user!.id);
+    res.status(201).json({ ok: true, id });
+  });
+
+  app.get('/api/results', async (req, res) => {
+    const from = parseDate(req.query.from, 'from');
+    const to = parseDate(req.query.to, 'to');
+    if (to <= from || to.getTime() - from.getTime() > MAX_RANGE_DAYS * 86_400_000) throw new BadRequest('bad range');
+    res.json(await listResults(pool, from, to));
+  });
+
+  app.delete('/api/results/:id', async (req, res) => {
+    const ok = await deleteResult(pool, parseId(req.params.id, 'id'), req.user!);
+    res.status(ok ? 200 : 404).json({ ok });
   });
 
   // ---- Leave: MC/PD file for themselves, the admin may file for anyone and decides.
