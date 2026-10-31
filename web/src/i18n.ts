@@ -132,6 +132,36 @@ const strings = {
   allLeave: { th: 'ใบลาทั้งหมด', en: 'All leave', zh: '全部请假' },
   fileFor: { th: 'ยื่นลาแทน', en: 'File leave for', zh: '代为请假' },
   me: { th: 'ตัวเอง', en: 'Myself', zh: '自己' },
+
+  // Hours vs KPI
+  month: { th: 'เดือน', en: 'Month', zh: '月份' },
+  kpiStaff: { th: 'พนักงานประจำ (เทียบ KPI)', en: 'Regular staff (vs KPI)', zh: '正式员工（对比KPI）' },
+  noKpiStaff: {
+    th: 'ไม่นับ KPI: guest, freelance, ฝึกงาน, operation',
+    en: 'No KPI: guests, freelancers, interns, operation',
+    zh: '不计KPI：嘉宾、自由职业、实习、运营',
+  },
+  kpiHint: {
+    th: 'KPI นับเฉพาะชั่วโมงในตำแหน่งตัวเอง ชั่วโมงข้ามบท (PD ไปเป็น MC) KPI = 0 จึงแยกไว้อีกช่อง ตัวเลขรวมรอบที่ publish แล้วทั้งเดือน รวมรอบที่ยกเลิกแต่ยังนับชั่วโมง',
+    en: 'KPI counts hours in the person’s own position. Hours in the other role (a PD hosting) have KPI 0 and are shown apart. Totals cover every published session in the month, plus cancelled ones still counted.',
+    zh: 'KPI只计本岗位工时。跨岗位工时（导播担任主播）KPI为0，单独列出。合计包含当月所有已发布场次及仍计工时的取消场次。',
+  },
+  position: { th: 'ตำแหน่ง', en: 'Position', zh: '岗位' },
+  ownRole: { th: 'ชม. ตำแหน่งตัวเอง', en: 'Own-role h', zh: '本岗工时' },
+  kpi: { th: 'KPI', en: 'KPI', zh: 'KPI' },
+  vsKpi: { th: 'เทียบ KPI', en: 'vs KPI', zh: '对比KPI' },
+  crossRole: { th: 'ชม. ข้ามบท', en: 'Other-role h', zh: '跨岗工时' },
+  total: { th: 'รวม', en: 'Total', zh: '合计' },
+  done: { th: 'ทำแล้ว', en: 'Done', zh: '已完成' },
+  sessionsCount: { th: 'รอบ', en: 'Sessions', zh: '场次' },
+  employment: { th: 'ประเภท', en: 'Type', zh: '类型' },
+  emp_full_time: { th: 'ประจำ', en: 'Full-time', zh: '正式' },
+  emp_intern: { th: 'ฝึกงาน', en: 'Intern', zh: '实习' },
+  emp_freelance: { th: 'ฟรีแลนซ์', en: 'Freelance', zh: '自由职业' },
+  emp_guest: { th: 'Guest', en: 'Guest', zh: '嘉宾' },
+  myHours: { th: 'ชั่วโมงเดือนนี้', en: 'Hours this month', zh: '本月工时' },
+  ofKpi: { th: 'จาก KPI {kpi} ชม.', en: 'of {kpi} h KPI', zh: '/ KPI {kpi} 小时' },
+  scheduledLeft: { th: 'ทำแล้ว {done} ชม. · ยังเหลือในตาราง {left} ชม.', en: '{done} h done · {left} h still scheduled', zh: '已完成 {done} 小时 · 排班中还有 {left} 小时' },
 } satisfies Record<string, Record<Lang, string>>;
 
 /** Messages for rule violation codes from the API. */

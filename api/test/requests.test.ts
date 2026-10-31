@@ -154,4 +154,27 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect(res.body.violations.map((v: { code: string }) => v.code)).toContain('holiday');
     expect((await call('DELETE', `/api/holidays/${off.body.id}`)).status).toBe(200);
   });
+
+  it('compares hours with KPI for regular staff only', async () => {
+    await pool.query(`INSERT INTO people (nickname, position, employment) VALUES ('P-Arm', 'mc', 'guest'), ('FL-Kaew', 'pd', 'freelance')`);
+    // ids 7 P-Arm (guest MC), 8 FL-Kaew (freelance PD)
+    await published('TTS 1', '2030-02-03T10:00', '2030-02-03T14:00', 1, 3); // 4 h: MC A as MC, PD A as PD
+    await published('TTS 2', '2030-02-04T10:00', '2030-02-04T12:00', 3, 8); // 2 h: PD A hosts as MC, FL-Kaew PD
+    await published('TTS 3', '2030-02-05T10:00', '2030-02-05T12:00', 7, 4); // 2 h: guest MC
+    const cancelled = await published('SHP 1', '2030-02-06T10:00', '2030-02-06T11:00', 1, 4);
+    await call('POST', `/api/sessions/${cancelled}/cancel`, { reason: 'ประชุมทีม' }); // still counts
+    await call('POST', '/api/sessions', draft('SHP 2', '2030-02-07T10:00', '2030-02-07T12:00', 2, 4)); // draft: no hours
+
+    const { body } = await call('GET', '/api/hours?month=2030-02');
+    const row = (name: string) => body.rows.find((r: { nickname: string }) => r.nickname === name);
+    expect(row('MC A')).toMatchObject({ mcHours: 5, kpiHours: 96, ownRoleHours: 5, vsKpi: -91, cancelledCountedHours: 1 });
+    expect(row('PD A')).toMatchObject({ pdHours: 4, mcHours: 2, kpiHours: 132, ownRoleHours: 4, crossRoleHours: 2 });
+    expect(row('P-Arm')).toMatchObject({ mcHours: 2, kpiHours: null, vsKpi: null });
+    expect(row('FL-Kaew')).toMatchObject({ pdHours: 2, kpiHours: null });
+    expect(row('MC B')).toMatchObject({ totalHours: 0 });
+
+    const own = await call('GET', '/api/hours?month=2030-02', undefined, MC_A);
+    expect(own.body.rows).toHaveLength(1);
+    expect((await call('GET', '/api/hours?month=2030-13')).status).toBe(400);
+  });
 });

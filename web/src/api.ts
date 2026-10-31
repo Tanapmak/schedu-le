@@ -128,6 +128,23 @@ export interface SwapInput {
   reason?: string;
 }
 
+export interface HoursRow {
+  personId: number;
+  nickname: string;
+  position: Person['position'];
+  employment: Person['employment'];
+  mcHours: number;
+  pdHours: number;
+  totalHours: number;
+  doneHours: number;
+  cancelledCountedHours: number;
+  sessions: number;
+  kpiHours: number | null;
+  ownRoleHours: number;
+  crossRoleHours: number;
+  vsKpi: number | null;
+}
+
 export type Role = 'admin' | 'mc' | 'pd' | 'viewer';
 
 export interface User {
@@ -224,6 +241,7 @@ export const api = {
   addHoliday: async (name: string, start: string, end: string) =>
     (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
   removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,
+  hours: async (month: string) => (await request<{ month: string; rows: HoursRow[] }>('GET', `/api/hours?month=${month}`)).data.rows,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,
 };

@@ -176,3 +176,23 @@ label.inline { display: flex; gap: 6px; align-items: center; }
 .time-pair label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
 .form-grid .segmented { width: fit-content; }
 .form-grid textarea { font: inherit; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.stat-card { border: 1px solid var(--line); border-top: 4px solid var(--red); border-radius: 8px; padding: 12px 16px; max-width: 420px; }
+.stat-label { font-size: 13px; color: var(--muted); }
+.stat-value { font-size: 28px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.stat-value small { font-size: 14px; font-weight: 400; }
+.stat-of { font-size: 13px; font-weight: 400; }
+.stat-sub { font-size: 13px; margin-top: 6px; }
+.kpi-bar { height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden; margin-top: 6px; min-width: 80px; }
+.kpi-bar span { display: block; height: 100%; background: var(--ink); }
+.kpi-bar span.met { background: var(--red); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table.data { border-collapse: collapse; width: 100%; font-size: 14px; }
+table.data th, table.data td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+table.data thead th { font-size: 12px; color: var(--muted); font-weight: 600; background: #fafafa; }
+table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
+table.data .pos { color: #1a7f37; }
+table.data .neg { color: var(--red); }
+table.data tr.mine td:first-child { box-shadow: inset 4px 0 0 var(--red); }
+table.data .bar-col { min-width: 120px; }
+table.data .bar-col small { font-size: 11px; }
+main:has(.table-wrap) { max-width: 1100px; }

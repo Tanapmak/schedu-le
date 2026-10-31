@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, AuthError, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
 import { Board } from './Board';
+import { HoursPage, MyHoursCard } from './Hours';
 import { LeavePage } from './LeavePage';
 import { MySchedule } from './MySchedule';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
@@ -115,7 +116,11 @@ export function App() {
         ) : page === 'schedule' && rooms && people && me ? (
           <Board lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : page === 'mySchedule' && rooms && people && me ? (
-          <MySchedule lang={lang} rooms={rooms} people={people} user={me.user} />
+          <MySchedule lang={lang} rooms={rooms} people={people} user={me.user}>
+            <MyHoursCard lang={lang} user={me.user} />
+          </MySchedule>
+        ) : page === 'hours' && me ? (
+          <HoursPage lang={lang} user={me.user} />
         ) : page === 'leave' && rooms && people && me ? (
           <LeavePage lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : (

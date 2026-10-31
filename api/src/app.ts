@@ -5,6 +5,7 @@ import type pg from 'pg';
 import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.js';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
+import { hoursReport, isMonth } from './hours.js';
 import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
@@ -127,6 +128,13 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig()) {
       [from, to],
     );
     res.json({ published: rowCount });
+  });
+
+  // ---- Hours vs KPI for a month. The team sees only their own row.
+  app.get('/api/hours', async (req, res) => {
+    if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
+    const rows = await hoursReport(pool, req.query.month);
+    res.json({ month: req.query.month, rows: req.user!.role === 'admin' ? rows : rows.filter((r) => r.personId === req.user!.id) });
   });
 
   // ---- Leave: MC/PD file for themselves, the admin may file for anyone and decides.
