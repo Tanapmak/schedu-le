@@ -5,6 +5,7 @@ import type pg from 'pg';
 import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.js';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
+import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
 import { claudeReader, type ImageMediaType, type ScreenshotReader } from './vision.js';
@@ -145,6 +146,16 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
     const rows = await hoursReport(pool, req.query.month);
     res.json({ month: req.query.month, rows: req.user!.role === 'admin' ? rows : rows.filter((r) => r.personId === req.user!.id) });
+  });
+
+  // ---- Payroll workbook (hours, KPI, results, freelance lives). No pay rates are stored in the app.
+  app.get('/api/export/payroll', requireAdmin, async (req, res) => {
+    if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
+    const wb = await payrollWorkbook(pool, req.query.month);
+    res.setHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('content-disposition', `attachment; filename="schedu-le-payroll-${req.query.month}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
   });
 
   // ---- Live results. The AI reads a screenshot into a draft; nothing is saved until the PD confirms.

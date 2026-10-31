@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
 import { createApp } from '../src/app.js';
 import type { ScreenshotReader } from '../src/vision.js';
 import { migrationsDir, seedDir } from '../src/paths.js';
@@ -208,5 +209,30 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const list = await call('GET', '/api/results?from=2030-03-01T00:00:00%2B07:00&to=2030-03-02T00:00:00%2B07:00');
     expect(list.body.map((r: { gmvDelta: number }) => r.gmvDelta)).toEqual([3000, 7500, 12500]);
     expect((await call('POST', '/api/results', { sessionId: s, isNewBroadcast: true, metrics: { gmv: -1 } }, 'pd.a@example.com')).status).toBe(400);
+  });
+
+  it('exports the month for payroll, without guests, with a freelance sheet', async () => {
+    await pool.query(`INSERT INTO people (nickname, position, employment) VALUES ('P-Arm', 'mc', 'guest'), ('FL-Kaew', 'pd', 'freelance')`);
+    const a = await published('TTS 1', '2030-04-02T10:00', '2030-04-02T12:00', 1, 8);
+    await published('TTS 2', '2030-04-03T10:00', '2030-04-03T13:00', 7, 8);
+    await call('POST', '/api/results', { sessionId: a, isNewBroadcast: true, capturedAt: '2030-04-02T11:55:00+07:00', metrics: { gmv: 9000 } });
+
+    expect((await fetch(`${base}/api/export/payroll?month=2030-04`, { headers: { 'x-dev-user': MC_A } })).status).toBe(403);
+    const res = await fetch(`${base}/api/export/payroll?month=2030-04`);
+    expect(res.headers.get('content-type')).toContain('spreadsheetml');
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ExcelJS.Buffer);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance']);
+
+    const names = (sheet: string, col: string) =>
+      wb.getWorksheet(sheet)!.getColumn(col).values.slice(2).filter((v) => typeof v === 'string');
+    expect(names('Summary', 'A')).toEqual(expect.arrayContaining(['MC A', 'FL-Kaew']));
+    expect(names('Summary', 'A')).not.toContain('P-Arm');
+    expect(names('Sessions', 'F')).not.toContain('P-Arm');
+    const fl = wb.getWorksheet('Freelance')!;
+    expect(fl.getRow(2).getCell('F').value).toBe('FL-Kaew');
+    expect(fl.getRow(4).values).toEqual(expect.arrayContaining(['Total FL-Kaew', 5, '2 lives', 9000]));
+    const mcA = wb.getWorksheet('Summary')!.getRows(2, 5)!.find((r) => r.getCell(1).value === 'MC A')!;
+    expect(mcA.getCell('L').value).toBe(9000);
   });
 });

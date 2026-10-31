@@ -4,6 +4,7 @@ import { t, type Lang } from './i18n';
 import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
 import { SwapForm } from './SwapForm';
+import { StatusPill } from './ui';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, hoursBetween, todayBkk } from './time';
 import type { ReactNode } from 'react';
 
@@ -46,6 +47,14 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
     const d = bkkDate(new Date(s.start));
     byDay.set(d, [...(byDay.get(d) ?? []), s]);
   }
+  // My live leave request on a day, if any, so the session can be swapped or covered.
+  const leaveOn = (day: string) =>
+    leave.find(
+      (l) =>
+        (l.status === 'pending' || l.status === 'approved') &&
+        new Date(l.start) < bkkInstant(addDays(day, 1), '00:00') &&
+        new Date(l.end) > bkkInstant(day, '00:00'),
+    );
   const pendingSwap = new Set(swaps.filter((s) => s.status === 'pending').map((s) => s.session.id));
 
   return (
@@ -65,7 +74,11 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
         {sessions && mine.length === 0 && <p className="muted">{t(lang, 'noUpcoming')}</p>}
         {[...byDay].map(([day, list]) => (
           <div key={day} className="my-day">
-            <h3>{formatDay(day, lang, { weekday: 'long', day: 'numeric', month: 'short' })}</h3>
+            <h3>
+              {formatDay(day, lang, { weekday: 'long', day: 'numeric', month: 'short' })}
+              {leaveOn(day) && <StatusPill lang={lang} status={leaveOn(day)!.status} />}
+              {leaveOn(day) && <span className="muted">{t(lang, 'leave')}</span>}
+            </h3>
             <ul className="my-sessions">
               {list.map((s) => {
                 const role = s.staff.find((x) => x.personId === user.id)?.role ?? 'mc';

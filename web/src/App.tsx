@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, AuthError, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
+import { api, AuthError, downloadPayroll, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
 import { Board } from './Board';
 import { HoursPage, MyHoursCard } from './Hours';
 import { LeavePage } from './LeavePage';
@@ -121,7 +121,15 @@ export function App() {
             <MyHoursCard lang={lang} user={me.user} />
           </MySchedule>
         ) : page === 'hours' && me ? (
-          <HoursPage lang={lang} user={me.user} />
+          <HoursPage
+            lang={lang}
+            user={me.user}
+            exportButton={(month) => (
+              <button className="primary" title={t(lang, 'exportHint')} onClick={() => downloadPayroll(month)}>
+                {t(lang, 'exportPayroll')}
+              </button>
+            )}
+          />
         ) : page === 'results' && rooms && people && me ? (
           <ResultsPage lang={lang} rooms={rooms} people={people} user={me.user} aiReader={Boolean(me.aiReader)} />
         ) : page === 'leave' && rooms && people && me ? (

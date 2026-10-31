@@ -51,7 +51,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
   }, [month]);
 
   const kpiRows = (rows ?? []).filter((r) => r.kpiHours !== null);
-  const otherRows = (rows ?? []).filter((r) => r.kpiHours === null);
+  const otherRows = (rows ?? []).filter((r) => r.kpiHours === null && r.totalHours > 0);
   const pos = (r: HoursRow) => (r.position === 'operation' ? 'OP' : r.position.toUpperCase());
 
   return (
@@ -67,6 +67,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
         </div>
       </div>
       <p className="hint">{t(lang, 'kpiHint')}</p>
+      {user.role === 'admin' && <p className="hint">{t(lang, 'exportHint')}</p>}
       {failed && <p className="error">{t(lang, 'loadFailed')}</p>}
       {!rows && !failed && <p className="muted">{t(lang, 'loading')}</p>}
 

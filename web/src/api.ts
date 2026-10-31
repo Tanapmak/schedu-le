@@ -240,6 +240,18 @@ export function setDevUser(email: string) {
   }
 }
 
+/** Downloads the month's payroll workbook (admin only). */
+export async function downloadPayroll(month: string): Promise<boolean> {
+  const asUser = devUser();
+  const res = await fetch(`/api/export/payroll?month=${month}`, { headers: asUser ? { 'x-dev-user': asUser } : {} });
+  if (!res.ok) return false;
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: `schedu-le-payroll-${month}.xlsx` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['content-type'] = 'application/json';

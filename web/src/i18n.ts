@@ -206,6 +206,13 @@ const strings = {
   increase: { th: 'เพิ่มขึ้น', en: 'Added', zh: '增量' },
   recordedBy: { th: 'บันทึกโดย', en: 'By', zh: '记录人' },
   gmvNote: { th: 'GMV ตามหน้าจอ (ก่อนหักคืนเงิน)', en: 'GMV as shown (before refunds)', zh: 'GMV 按屏幕显示（退款前）' },
+
+  exportPayroll: { th: '⬇ Export Excel เงินเดือน', en: '⬇ Payroll Excel', zh: '⬇ 导出工资 Excel' },
+  exportHint: {
+    th: 'ไฟล์มี 3 ชีต: Summary (ชั่วโมง/KPI/GMV ต่อคน), Sessions (ทุกรอบ), Freelance (รายการไลฟ์ของฟรีแลนซ์ + ยอดรวม) ไม่มีอัตราเงินเดือนในไฟล์ ไม่รวม guest',
+    en: 'Three sheets: Summary (hours/KPI/GMV per person), Sessions (every live), Freelance (each freelancer’s lives with totals). No pay rates; guests left out.',
+    zh: '三个工作表：Summary（每人工时/KPI/GMV）、Sessions（所有场次）、Freelance（自由职业者场次及合计）。不含工资标准，不含嘉宾。',
+  },
 } satisfies Record<string, Record<Lang, string>>;
 
 /** Messages for rule violation codes from the API. */
