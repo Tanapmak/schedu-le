@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { api, AuthError, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
+import { api, AuthError, downloadPayroll, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
 import { Board } from './Board';
+import { HoursPage, MyHoursCard } from './Hours';
+import { LeavePage } from './LeavePage';
+import { MySchedule } from './MySchedule';
+import { ResultsPage } from './Results';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 const pages: StringKey[] = ['schedule', 'mySchedule', 'leave', 'hours', 'results'];
@@ -112,6 +116,24 @@ export function App() {
           </p>
         ) : page === 'schedule' && rooms && people && me ? (
           <Board lang={lang} rooms={rooms} people={people} user={me.user} />
+        ) : page === 'mySchedule' && rooms && people && me ? (
+          <MySchedule lang={lang} rooms={rooms} people={people} user={me.user}>
+            <MyHoursCard lang={lang} user={me.user} />
+          </MySchedule>
+        ) : page === 'hours' && me ? (
+          <HoursPage
+            lang={lang}
+            user={me.user}
+            exportButton={(month) => (
+              <button className="primary" title={t(lang, 'exportHint')} onClick={() => downloadPayroll(month)}>
+                {t(lang, 'exportPayroll')}
+              </button>
+            )}
+          />
+        ) : page === 'results' && rooms && people && me ? (
+          <ResultsPage lang={lang} rooms={rooms} people={people} user={me.user} aiReader={Boolean(me.aiReader)} />
+        ) : page === 'leave' && rooms && people && me ? (
+          <LeavePage lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : (
           <>
             <h1>{t(lang, page)}</h1>
