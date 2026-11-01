@@ -59,4 +59,5 @@ steps:
       - --service-account=${_APP_SA}
       - --add-cloudsql-instances=${PROJECT_ID}:${_REGION}:${_INSTANCE}
       - --set-env-vars=DB_SOCKET=/cloudsql/${PROJECT_ID}:${_REGION}:${_INSTANCE},DB_NAME=schedule,DB_USER=app,TZ=Asia/Bangkok,IAP_AUDIENCE=/projects/${PROJECT_NUMBER}/locations/${_REGION}/services/${_SERVICE}
-      - --set-secrets=DB_PASSWORD=db-password:latest
+      # --update (not --set) keeps secrets added by hand, such as ANTHROPIC_API_KEY for screenshot reading.
+      - --update-secrets=DB_PASSWORD=db-password:latest

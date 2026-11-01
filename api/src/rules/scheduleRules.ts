@@ -130,9 +130,11 @@ export function checkSession(session: Session, ctx: SessionContext): Violation[]
 export interface LeaveContext {
   rules: Rules;
   people: Map<number, Person>;
-  /** Other leave requests near this one; the request itself is skipped by id. */
+  /** Other leave requests in the months this one touches; the request itself is skipped by id. */
   leaves: Leave[];
   sessions: Session[];
+  /** Team off days: no leave can be filed on them, the team is off anyway. */
+  holidays?: Holiday[];
 }
 
 /**
@@ -151,6 +153,27 @@ export function checkLeave(leave: Leave, ctx: LeaveContext): Violation[] {
 
   if (others.some((l) => l.personId === leave.personId && overlaps(l, leave))) {
     out.push({ code: 'leave_overlap', severity: 'error', personId: leave.personId });
+  }
+
+  for (const h of ctx.holidays ?? []) {
+    if (!overlaps(h, leave)) continue;
+    const date = bangkokDates(h).find((d) => bangkokDates(leave).includes(d)) ?? bangkokDates(h)[0];
+    out.push({ code: 'holiday_no_leave', severity: 'error', detail: { date, name: h.name } });
+  }
+
+  // Monthly cap on normal leave days for full-time MC/PD. Urgent leave is not counted.
+  if (leave.kind === 'normal' && person.employment === 'full_time' && person.position !== 'operation') {
+    const max = ctx.rules.leaveMaxDaysPerMonth[person.position];
+    const mine = others.filter((l) => l.personId === leave.personId && l.kind === 'normal');
+    const byMonth = new Map<string, Set<string>>();
+    for (const l of mine) for (const d of bangkokDates(l)) byMonth.set(d.slice(0, 7), (byMonth.get(d.slice(0, 7)) ?? new Set()).add(d));
+    const months = new Map<string, string[]>();
+    for (const d of bangkokDates(leave)) months.set(d.slice(0, 7), [...(months.get(d.slice(0, 7)) ?? []), d]);
+    for (const [month, days] of months) {
+      const used = byMonth.get(month) ?? new Set<string>();
+      const total = new Set([...used, ...days]).size;
+      if (total > max) out.push({ code: 'leave_month_cap', severity: 'error', personId: leave.personId, detail: { month, used: used.size, max } });
+    }
   }
 
   if (person.position !== 'operation') {

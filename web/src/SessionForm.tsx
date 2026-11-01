@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, type Person, type Room, type Session, type SessionInput } from './api';
 import { t, violationMessage, type Lang, type ViolationLike } from './i18n';
 import { bkkDate, bkkInstant, bkkTime } from './time';
+import { useBackdropClose } from './ui';
 
 export type FormTarget =
   | { mode: 'new'; roomId?: number; date: string; start: string; end: string }
@@ -93,9 +94,10 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
     }
   }
 
+  const backdrop = useBackdropClose(onClose);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" {...backdrop}>
+      <div className="modal" role="dialog" aria-modal="true">
         <header>
           <h2>{t(lang, editing ? 'editSession' : 'newSession')}</h2>
           <button className="icon" aria-label={t(lang, 'close')} onClick={onClose}>

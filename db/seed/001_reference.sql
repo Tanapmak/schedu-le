@@ -15,6 +15,7 @@ INSERT INTO rules (key, value) VALUES
   ('kpi_hours',              '{"mc": 96, "pd": 132}'),
   ('max_hours',              '{"mc": 124, "pd": 176}'),
   ('leave_quota_per_day',    '{"mc": 2, "pd": 2}'),
+  ('leave_max_days_per_month', '{"mc": 8, "pd": 8}'),
   ('session_slot_minutes',   '120'),
   ('clock_in_window_minutes','30')
 ON CONFLICT (key) DO NOTHING;
