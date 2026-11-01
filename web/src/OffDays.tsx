@@ -71,32 +71,55 @@ export function OffDaysPage({ lang }: { lang: Lang }) {
       <section>
         <h2>{t(lang, 'upcomingOffDays')}</h2>
         {holidays && upcoming.length === 0 && <p className="muted">{t(lang, 'noOffDays')}</p>}
-        <ul className="off-day-cards">
-          {upcoming.map((h) => (
-            <li key={h.id}>
-              <strong>{periodLabel(lang, h.start, h.end)}</strong>
-              <span>{h.name}</span>
-              <button className="link danger-link" onClick={() => remove(h)}>
-                {t(lang, 'remove')}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {upcoming.length > 0 && <OffDayTable lang={lang} rows={upcoming} onRemove={remove} />}
       </section>
 
       {past.length > 0 && (
         <section>
           <h2>{t(lang, 'pastOffDays')}</h2>
-          <ul className="off-day-cards past">
-            {past.map((h) => (
-              <li key={h.id}>
-                <strong>{periodLabel(lang, h.start, h.end)}</strong>
-                <span>{h.name}</span>
-              </li>
-            ))}
-          </ul>
+          <OffDayTable lang={lang} rows={past} past />
         </section>
       )}
+    </div>
+  );
+}
+
+const dayCount = (h: Holiday) => Math.max(1, Math.round((Date.parse(h.end) - Date.parse(h.start)) / 86_400_000));
+
+/** Off days as a table on a computer; each row turns into a card on a phone. */
+function OffDayTable({ lang, rows, past, onRemove }: { lang: Lang; rows: Holiday[]; past?: boolean; onRemove?: (h: Holiday) => void }) {
+  return (
+    <div className="table-wrap table-cards">
+      <table className={`data${past ? ' past' : ''}`}>
+        <thead>
+          <tr>
+            <th>{t(lang, 'date')}</th>
+            <th>{t(lang, 'offDayName')}</th>
+            <th className="num">{t(lang, 'daysCol')}</th>
+            {onRemove && <th />}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((h) => (
+            <tr key={h.id}>
+              <td data-label={t(lang, 'date')}>
+                <strong>{periodLabel(lang, h.start, h.end)}</strong>
+              </td>
+              <td data-label={t(lang, 'offDayName')}>{h.name}</td>
+              <td data-label={t(lang, 'daysCol')} className="num">
+                {dayCount(h)}
+              </td>
+              {onRemove && (
+                <td className="num">
+                  <button className="link danger-link" onClick={() => onRemove(h)}>
+                    {t(lang, 'remove')}
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

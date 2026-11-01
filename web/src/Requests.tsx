@@ -36,7 +36,7 @@ export function RequestList({ lang, user, people, rooms, leave, swaps, decide, c
 
   if (table)
     return (
-      <div className="table-wrap">
+      <div className="table-wrap table-cards">
         <table className="data requests">
           <thead>
             <tr>
@@ -158,17 +158,17 @@ function RequestRow({
     return (
       <>
         <tr className={`clickable${urgent ? ' urgent' : ''}`} onClick={(e) => !(e.target as HTMLElement).closest('button') && setPreviewing(true)}>
-          <td>
+          <td data-label={t(lang, 'name')}>
             <strong>{name}</strong>
           </td>
-          <td>{position}</td>
-          <td className="wrap">{what}</td>
-          <td>
+          <td data-label={t(lang, 'position')}>{position}</td>
+          <td data-label={t(lang, 'date')} className="wrap">{what}</td>
+          <td data-label={t(lang, 'typeCol')}>
             <span className={urgent ? 'urgent-text' : ''}>{kindLabel}</span>
           </td>
-          <td className="wrap muted">{item.reason ?? '—'}</td>
-          <td className="muted">{formatDay(bkkDate(new Date(item.createdAt)), lang, { day: 'numeric', month: 'short' })} {bkkTime(new Date(item.createdAt))}</td>
-          <td>
+          <td data-label={t(lang, 'reason')} className="wrap muted">{item.reason ?? '—'}</td>
+          <td data-label={t(lang, 'filedAt')} className="muted">{formatDay(bkkDate(new Date(item.createdAt)), lang, { day: 'numeric', month: 'short' })} {bkkTime(new Date(item.createdAt))}</td>
+          <td data-label={t(lang, 'status')}>
             <StatusPill lang={lang} status={item.status} />
           </td>
           <td>

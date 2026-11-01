@@ -263,6 +263,7 @@ const strings = {
   previewAffected: { th: 'รอบที่ได้รับผลกระทบ', en: 'Sessions affected', zh: '受影响的场次' },
   previewNoSessions: { th: 'ไม่มีรอบในช่วงที่ลา', en: 'No sessions during the leave', zh: '请假期间没有场次' },
   previewVacant: { th: 'ว่าง · ต้องหาคนแทน', en: 'Empty · needs cover', zh: '空缺 · 需替班' },
+  daysCol: { th: 'จำนวนวัน', en: 'Days', zh: '天数' },
   summaryPanel: { th: 'แผงสรุป', en: 'Summary', zh: '摘要面板' },
   toHandle: { th: 'ต้องจัดการ', en: 'To handle', zh: '待处理' },
   sessionsNoPd: { th: 'รอบที่ยังไม่มี PD', en: 'Sessions without a PD', zh: '缺少 PD 的场次' },

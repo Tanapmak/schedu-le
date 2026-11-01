@@ -446,3 +446,15 @@ table.data.requests tr.clickable:hover td { background: #fafafa; }
 .modal footer .checks { flex: 1; margin: 0; }
 @media (max-width: 640px) { .pv-pair { grid-template-columns: 1fr; } .pv-arrow { transform: rotate(90deg); } }
 input[type='date'], input[type='time'], input[type='datetime-local'], input[type='month'] { cursor: pointer; }
+table.data.past td { color: var(--gray-dark); }
+/* Tables become cards on a phone */
+@media (max-width: 720px) {
+  .table-cards { border: 0; overflow: visible; }
+  .table-cards table, .table-cards tbody, .table-cards tr, .table-cards td { display: block; width: 100%; }
+  .table-cards thead { display: none; }
+  .table-cards tr { background: var(--gray-light); border-radius: 12px; padding: 10px 14px; margin-bottom: 8px; }
+  .table-cards td { border: 0 !important; padding: 3px 0 !important; white-space: normal !important; text-align: left !important; background: none !important; }
+  .table-cards td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--gray-dark); }
+  .table-cards td .request-actions { justify-content: flex-start !important; margin-top: 6px; }
+  .table-cards tr.checks-row { background: none; padding: 0; }
+}
