@@ -7,6 +7,7 @@ import { authConfig, authenticate, isManager, requireManager, requireMasterAdmin
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
 import { adjustAttendance, clockIn, clockOut, dayAttendance, decideAttendance, listStudios, myAttendance, saveStudio, type Fix } from './attendance.js';
+import { correctableSessions, decideCorrection, listCorrections, requestCorrection, withdrawCorrection } from './corrections.js';
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
@@ -334,7 +335,53 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   };
 
   app.get('/api/attendance/me', async (req, res) => {
-    res.json(await myAttendance(pool, req.user!.id, new Date()));
+    const now = new Date();
+    const [mine, correctable, corrections] = await Promise.all([
+      myAttendance(pool, req.user!.id, now),
+      correctableSessions(pool, req.user!.id, now),
+      listCorrections(pool, req.user!.id),
+    ]);
+    res.json({ ...mine, correctable, corrections });
+  });
+
+  // Time corrections for a forgotten clock in/out. Asked from the session's place; managers decide.
+  const timeOf = (v: unknown, name: string) => {
+    if (v === null || v === undefined || v === '') return null;
+    const d = new Date(String(v));
+    if (Number.isNaN(d.getTime())) throw new BadRequest(`${name} must be a date-time`);
+    return d;
+  };
+
+  app.get('/api/attendance/corrections', async (req, res) => {
+    res.json(await listCorrections(pool, isManager(req.user!.role) ? null : req.user!.id));
+  });
+
+  app.post('/api/attendance/corrections', async (req, res) => {
+    const reason = text(req.body.reason);
+    if (!reason) throw new BadRequest('reason is required');
+    const out = await requestCorrection(
+      pool,
+      req.user!.id,
+      {
+        sessionId: parseId(req.body.sessionId, 'sessionId'),
+        clockInAt: timeOf(req.body.clockInAt, 'clockInAt'),
+        clockOutAt: timeOf(req.body.clockOutAt, 'clockOutAt'),
+        reason,
+      },
+      fixOf(req.body),
+      new Date(),
+    );
+    res.status(out.ok ? 201 : out.status).json(out);
+  });
+
+  app.post('/api/attendance/corrections/:id/decision', requireManager, async (req, res) => {
+    const out = await decideCorrection(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), req.user!.id);
+    res.status(out.ok ? 200 : out.status).json(out);
+  });
+
+  app.post('/api/attendance/corrections/:id/withdraw', async (req, res) => {
+    const ok = await withdrawCorrection(pool, parseId(req.params.id, 'id'), req.user!.id);
+    res.status(ok ? 200 : 404).json({ ok });
   });
 
   app.post('/api/attendance/clock-in', async (req, res) => {

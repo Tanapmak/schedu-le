@@ -5,7 +5,7 @@ import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
 import { SwapForm } from './SwapForm';
 import { StatusPill, Tabs } from './ui';
-import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, hoursBetween, todayBkk } from './time';
+import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, hoursBetween, todayBkk, liveDate } from './time';
 import type { ReactNode } from 'react';
 
 interface Props {
@@ -47,7 +47,7 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
   const mine = (sessions ?? []).filter((s) => s.staff.some((x) => x.personId === user.id && !x.replaced));
   const byDay = new Map<string, Session[]>();
   for (const s of mine) {
-    const d = bkkDate(new Date(s.start));
+    const d = liveDate(new Date(s.start));
     byDay.set(d, [...(byDay.get(d) ?? []), s]);
   }
   // My live leave request on a day, if any, so the session can be swapped or covered.

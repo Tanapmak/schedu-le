@@ -254,6 +254,37 @@ export interface Attendance {
   status: 'ok' | 'pending' | 'approved' | 'rejected';
   adjustedHours: number | null;
   adjustNote: string | null;
+  correctionId: number | null;
+}
+
+export interface Correction {
+  id: number;
+  personId: number;
+  nickname: string;
+  sessionId: number;
+  roomId: number;
+  sessionStart: string;
+  sessionEnd: string;
+  current: { clockInAt: string; clockOutAt: string | null } | null;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  reason: string;
+  distanceM: number | null;
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export interface CorrectableSession {
+  id: number;
+  roomId: number;
+  start: string;
+  end: string;
+  location: 'studio' | 'offsite' | 'home';
+  offsite: { lat: number; lng: number } | null;
+  attendance: { clockInAt: string; clockOutAt: string | null } | null;
+  pendingCorrectionId: number | null;
 }
 
 export interface MyAttendance {
@@ -263,6 +294,8 @@ export interface MyAttendance {
   open: Attendance | null;
   records: Attendance[];
   studios: Studio[];
+  correctable: CorrectableSession[];
+  corrections: Correction[];
 }
 
 export type AttendanceState = 'done' | 'working' | 'forgot_out' | 'cancelled' | 'not_yet' | 'not_in' | 'missed';
@@ -389,6 +422,12 @@ export const api = {
   myAttendance: async () => (await request<MyAttendance>('GET', '/api/attendance/me')).data,
   clockIn: async (at: Fix, reason?: string) => (await request<ClockResult>('POST', '/api/attendance/clock-in', { ...at, reason })).data,
   clockOut: async (at: Fix) => (await request<ClockResult>('POST', '/api/attendance/clock-out', { ...at })).data,
+  corrections: async () => (await request<Correction[]>('GET', '/api/attendance/corrections')).data,
+  requestCorrection: async (input: { sessionId: number; clockInAt: string | null; clockOutAt: string | null; reason: string }, at: Fix) =>
+    (await request<{ ok: true; id: number } | { ok: false; error: string; message?: string }>('POST', '/api/attendance/corrections', { ...input, ...at })).data,
+  decideCorrection: async (id: number, decision: 'approve' | 'reject') =>
+    (await request<{ ok: boolean; error?: string }>('POST', `/api/attendance/corrections/${id}/decision`, { decision })).data,
+  withdrawCorrection: async (id: number) => (await request<{ ok: boolean }>('POST', `/api/attendance/corrections/${id}/withdraw`)).data,
   dayAttendance: async (date: string) => (await request<DayAttendance>('GET', `/api/attendance?date=${date}`)).data,
   decideAttendance: async (id: number, decision: 'approve' | 'reject') =>
     (await request<{ ok: boolean }>('POST', `/api/attendance/${id}/decision`, { decision })).data,
