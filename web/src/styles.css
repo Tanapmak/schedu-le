@@ -370,7 +370,7 @@ td .row-actions { justify-content: flex-end; }
 /* Admin summary panel beside the board */
 .board-body { display: block; }
 .board-body.with-panel { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
-@media (max-width: 1100px) { .board-body.with-panel { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .board-body.with-panel { grid-template-columns: minmax(0, 1fr); } .summary-panel { position: static; } }
 .summary-panel { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 76px; }
 .sp-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .sp-card.gray { background: var(--gray-light); border-color: var(--gray-light); }
@@ -476,4 +476,18 @@ table.data thead th { position: sticky; top: 0; z-index: 1; }
   .page.fill > section.grow > * { flex: none; }
   .page.fill > section.grow > .table-wrap { flex: 0 1 auto; min-height: 80px; }
   .page.fill .table-wrap { overflow: auto; }
+}
+
+/* Tablet: menu gets its own row so every item is visible */
+@media (max-width: 1024px) {
+  .topbar { flex-wrap: wrap; }
+  .topbar nav.pills { order: 5; flex-basis: 100%; }
+  .topbar .lang { margin-left: auto; }
+}
+/* Phone: board controls start at the left edge, buttons share the row */
+@media (max-width: 720px) {
+  .toolbar .actions { margin-left: 0; width: 100%; }
+  .toolbar .actions > button { flex: 1 1 auto; }
+  .toolbar .nav strong { min-width: 0; flex: 1; font-size: 16px; }
+  .toolbar .nav { width: 100%; }
 }
