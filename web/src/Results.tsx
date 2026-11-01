@@ -172,6 +172,7 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [savedTick, setSavedTick] = useState(0);
+  const [zoom, setZoom] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Suggest the flag from the room's last reading, for hand-typed results too.
@@ -250,27 +251,42 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
 
   return (
     <div className="result-form" onPaste={onPaste}>
-      <div
-        className={`dropzone ${image ? 'has-image' : ''}`}
-        tabIndex={0}
-        role="button"
-        onClick={() => fileRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-      >
-        {image ? <img src={image} alt="" /> : <span>{t(lang, 'dropHint')}</span>}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void useImage(f);
-            e.target.value = '';
-          }}
-        />
+      <div className="shot">
+        <div
+          className={`dropzone ${image ? 'has-image' : ''}`}
+          tabIndex={0}
+          role="button"
+          title={image ? t(lang, 'zoomHint') : undefined}
+          onClick={() => (image ? setZoom(true) : fileRef.current?.click())}
+          onKeyDown={(e) => e.key === 'Enter' && (image ? setZoom(true) : fileRef.current?.click())}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onDrop}
+        >
+          {image ? <img src={image} alt="" /> : <span>{t(lang, 'dropHint')}</span>}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void useImage(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        {image && (
+          <div className="shot-actions">
+            <button className="link" onClick={() => setZoom(true)}>{t(lang, 'zoomImage')}</button>
+            <button className="link" onClick={() => fileRef.current?.click()}>{t(lang, 'changeImage')}</button>
+          </div>
+        )}
+        {zoom && image && (
+          <div className="zoom-backdrop" role="dialog" aria-modal="true" onClick={() => setZoom(false)}>
+            <button className="zoom-close" aria-label="close" onClick={() => setZoom(false)}>×</button>
+            <img src={image} alt="" />
+          </div>
+        )}
       </div>
 
       <div className="result-fields">
