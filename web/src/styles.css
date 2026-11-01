@@ -522,3 +522,56 @@ button.danger-outline { border-color: var(--red); color: var(--red); }
   .team-search, .team-search input[type='search'] { width: 100%; min-width: 0; }
   .role-picker { grid-template-columns: 1fr; }
 }
+
+/* Log out */
+.logout { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 9999px; padding: 6px 12px; background: #fff; color: var(--ink); font-size: 13px; cursor: pointer; }
+.logout:hover { border-color: var(--ink); }
+.auth-error { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+@media (max-width: 720px) {
+  .logout { padding: 6px 9px; }
+  .logout-label { display: none; }
+}
+
+/* Time corrections */
+.corrections { margin-top: 24px; }
+.corrections h3 { font-size: 15px; margin: 20px 0 8px; }
+.corr-sessions, .corr-mine, .corr-queue ul { list-style: none; margin: 0; padding: 0; }
+.corr-sessions li, .corr-mine li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.corr-sessions li > div, .corr-mine li > div { flex: 1; min-width: 0; }
+.corr-sessions li.problem strong { color: var(--scarlet); }
+.corr-sessions .pill { margin-left: 6px; }
+.corr-session { font-weight: 600; color: var(--ink); margin: 0 0 12px; }
+.corr-queue { margin: 0 0 16px; border-color: #f0c36d; background: #fffaf0; }
+.corr-queue h2 { font-size: 16px; margin: 0 0 8px; }
+.corr-queue li { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr) auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.corr-who { display: flex; flex-direction: column; gap: 2px; }
+.corr-who .link { text-align: left; padding: 0; font-size: 13px; }
+.corr-times { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 14px; }
+.corr-times s { color: var(--muted); }
+.corr-times small { flex-basis: 100%; }
+@media (max-width: 720px) {
+  .corr-queue li { grid-template-columns: minmax(0, 1fr); }
+  .corr-sessions li, .corr-mine li { flex-wrap: wrap; }
+}
+
+/* Live board on a computer: the header and toolbar stay put; the board and the summary panel
+   each scroll inside their own box, so the panel never runs off the screen. */
+@media (min-width: 1101px) {
+  main:has(> .board) { height: calc(100dvh - 61px); overflow: hidden; display: flex; flex-direction: column; padding-bottom: 16px; }
+  main > .board { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .board > .toolbar { flex: none; }
+  .board > .board-body { flex: 1; min-height: 0; overflow: auto; }
+  .board > .board-body.with-panel { overflow: hidden; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .board-body.with-panel > .board-main { overflow: auto; min-height: 0; }
+  .board-body > .summary-panel, .month-layout > .summary-panel { position: static; overflow-y: auto; min-height: 0; overscroll-behavior: contain; padding-right: 2px; }
+  .board > .board-body:has(.month-layout) { overflow: hidden; }
+  .board-body:has(.month-layout) > .board-main { height: 100%; display: flex; flex-direction: column; }
+  .board-body:has(.month-layout) > .board-main > * { flex: none; }
+  .board-body:has(.month-layout) > .board-main > .month-layout { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .month-layout > .month-grid { overflow: auto; min-height: 0; align-content: start; }
+}
+@media (max-width: 1440px) {
+  .logout-label { display: none; }
+  .logout { padding: 6px 9px; }
+}
+.corr-who { align-items: flex-start; }

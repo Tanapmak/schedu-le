@@ -3,7 +3,7 @@ import { api, type Board as BoardData, type HoursRow, type Person, type Room, ty
 import { t, violationMessage, type Lang } from './i18n';
 import { MonthView, addMonths, monthGrid } from './MonthView';
 import { SessionForm, type FormTarget } from './SessionForm';
-import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk } from './time';
+import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk, liveDate } from './time';
 
 type View = 'day' | 'week' | 'month';
 
@@ -328,7 +328,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
                 <tr key={room.id}>
                   <th scope="row">{room.code}</th>
                   {days.map((d) => {
-                    const list = visible.filter((s) => s.roomId === room.id && bkkDate(new Date(s.start)) === d);
+                    const list = visible.filter((s) => s.roomId === room.id && liveDate(new Date(s.start)) === d);
                     return (
                       <td key={d} onClick={() => canEdit && setForm({ mode: 'new', roomId: room.id, date: d, start: '10:00', end: '12:00' })}>
                         {list.map((s) => (

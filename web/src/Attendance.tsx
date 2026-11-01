@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type DayAttendance, type Person, type Room, type Studio } from './api';
+import { api, type Correction, type DayAttendance, type Person, type Room, type Studio } from './api';
 import { t, type Lang, type StringKey } from './i18n';
-import { addDays, bkkTime, formatDay, todayBkk } from './time';
+import { addDays, bkkTime, formatDay, liveDate } from './time';
 import { Modal } from './ui';
 
 type Row = DayAttendance['rows'][number];
 
 /** Admin: who clocked in and out for each session of a day, out-of-area approvals and hour fixes. */
-export function AttendancePage({ lang, people, rooms }: { lang: Lang; people: Person[]; rooms: Room[] }) {
-  const [date, setDate] = useState(todayBkk());
+export function AttendancePage({ lang, people, rooms, onChanged }: { lang: Lang; people: Person[]; rooms: Room[]; onChanged?: () => void }) {
+  // The live day now: before 06:00 it is still last night's.
+  const [date, setDate] = useState(liveDate(new Date()));
+  const [corrections, setCorrections] = useState<Correction[]>([]);
   const [data, setData] = useState<DayAttendance>();
   const [studioOpen, setStudioOpen] = useState(false);
   const [adjusting, setAdjusting] = useState<Row>();
 
-  const load = useCallback(() => void api.dayAttendance(date).then(setData), [date]);
+  const load = useCallback(() => {
+    void api.dayAttendance(date).then(setData);
+    void api.corrections().then((c) => setCorrections(c.filter((x) => x.status === 'pending')));
+  }, [date]);
   useEffect(load, [load]);
 
   const nameOf = (id: number) => people.find((p) => p.id === id)?.nickname ?? `#${id}`;
@@ -41,7 +46,7 @@ export function AttendancePage({ lang, people, rooms }: { lang: Lang; people: Pe
         <div className="head-actions">
           <div className="nav">
             <button aria-label="previous" onClick={() => setDate(addDays(date, -1))}>‹</button>
-            <button onClick={() => setDate(todayBkk())}>{t(lang, 'today')}</button>
+            <button onClick={() => setDate(liveDate(new Date()))}>{t(lang, 'today')}</button>
             <button aria-label="next" onClick={() => setDate(addDays(date, 1))}>›</button>
           </div>
           <button onClick={() => setStudioOpen(true)}>{t(lang, 'studioArea')}</button>
@@ -70,6 +75,16 @@ export function AttendancePage({ lang, people, rooms }: { lang: Lang; people: Pe
       </div>
 
       {data && data.studios.length === 0 && <p className="warning-text">{t(lang, 'noStudioYet')}</p>}
+
+      {corrections.length > 0 && (
+        <CorrectionQueue
+          lang={lang}
+          items={corrections}
+          codeOf={codeOf}
+          onOpenDay={setDate}
+          onChanged={() => (load(), onChanged?.())}
+        />
+      )}
 
       <div className="table-wrap">
         <table className="data attendance">
@@ -153,6 +168,7 @@ function StatusCell({ lang, row: r }: { lang: Lang; row: Row }) {
     const where = a.inDistanceM !== null ? ` ${a.inDistanceM >= 1000 ? `${(a.inDistanceM / 1000).toFixed(1)} km` : `${a.inDistanceM} m`}` : '';
     parts.push({ text: `${t(lang, 'clockOffsite')}${where} · ${t(lang, `att_${a.status}` as StringKey)}`, cls: a.status === 'rejected' ? 'bad' : a.status === 'pending' ? 'alert' : 'ok' });
   }
+  if (a?.correctionId) parts.push({ text: t(lang, 'corrApplied'), cls: 'muted' });
   if (a && r.lateMin > 0) parts.push({ text: t(lang, 'lateMin').replace('{n}', String(r.lateMin)), cls: 'warn' });
   if (a && r.lateMin === 0 && a.inArea) parts.push({ text: t(lang, 'onTime'), cls: 'ok' });
   if (!a || r.state !== 'done') parts.push({ text: t(lang, `state_${r.state}` as StringKey), cls: r.state === 'missed' || r.state === 'forgot_out' ? 'bad' : r.state === 'working' ? 'ok' : 'muted' });
@@ -266,5 +282,83 @@ function AdjustForm({ lang, row, name, onClose, onSaved }: { lang: Lang; row: Ro
         </label>
       </div>
     </Modal>
+  );
+}
+
+/** Time-correction requests waiting for a manager, across all days. */
+function CorrectionQueue({
+  lang,
+  items,
+  codeOf,
+  onOpenDay,
+  onChanged,
+}: {
+  lang: Lang;
+  items: Correction[];
+  codeOf: (id: number) => string;
+  onOpenDay: (date: string) => void;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<number>();
+  const [error, setError] = useState('');
+  const time = (iso: string | null | undefined) => (iso ? bkkTime(new Date(iso)) : '—');
+
+  async function decide(c: Correction, d: 'approve' | 'reject') {
+    setBusy(c.id);
+    setError('');
+    try {
+      const out = await api.decideCorrection(c.id, d);
+      if (!out.ok) setError(out.error === 'out_before_in' ? t(lang, 'corrErr_out_before_in') : (out.error ?? ''));
+      onChanged();
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  return (
+    <section className="card corr-queue">
+      <h2>
+        {t(lang, 'corrQueue')} <span className="tab-count">{items.length}</span>
+      </h2>
+      <ul>
+        {items.map((c) => {
+          const day = liveDate(new Date(c.sessionStart));
+          return (
+            <li key={c.id}>
+              <div className="corr-who">
+                <strong>{c.nickname}</strong>
+                <button className="link" onClick={() => onOpenDay(day)}>
+                  {formatDay(day, lang, { weekday: 'short', day: 'numeric', month: 'short' })} · {time(c.sessionStart)}–{time(c.sessionEnd)} · {codeOf(c.roomId)}
+                </button>
+              </div>
+              <div className="corr-times">
+                {c.clockInAt && (
+                  <span>
+                    In <s>{time(c.current?.clockInAt)}</s> → <strong>{time(c.clockInAt)}</strong>
+                  </span>
+                )}
+                {c.clockOutAt && (
+                  <span>
+                    Out <s>{time(c.current?.clockOutAt)}</s> → <strong>{time(c.clockOutAt)}</strong>
+                  </span>
+                )}
+                <small className="muted">
+                  “{c.reason}”{c.distanceM !== null && ` · ${t(lang, 'corrSentFrom').replace('{d}', `${c.distanceM} m`)}`}
+                </small>
+              </div>
+              <div className="row-actions">
+                <button disabled={busy === c.id} onClick={() => void decide(c, 'reject')}>
+                  {t(lang, 'reject')}
+                </button>
+                <button className="primary" disabled={busy === c.id} onClick={() => void decide(c, 'approve')}>
+                  {t(lang, 'approve')}
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }

@@ -14,6 +14,21 @@ export function bkkInstant(date: string, time: string): Date {
   return new Date(Date.parse(`${date}T00:00:00+07:00`) + (h * 60 + m) * 60_000);
 }
 
+/**
+ * A live day runs from 06:00 to 06:00 the next morning, so a 22:00–02:00 live and a
+ * 00:00–02:00 live both belong to the evening before, the way the board shows them.
+ */
+export const LIVE_DAY_START_H = 6;
+
+/** The live day (YYYY-MM-DD) an instant belongs to: 00:00–05:59 counts as the day before. */
+export const liveDate = (d: Date) => bkkDate(new Date(d.getTime() - LIVE_DAY_START_H * 3_600_000));
+
+/** Instant for a time on a live day: times before 06:00 fall on the next calendar day. */
+export function liveInstant(date: string, time: string): Date {
+  const at = bkkInstant(date, time);
+  return Number(time.slice(0, 2)) < LIVE_DAY_START_H ? new Date(at.getTime() + DAY_MS) : at;
+}
+
 export const addDays = (date: string, n: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 

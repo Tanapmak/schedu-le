@@ -45,15 +45,17 @@ export function App() {
   const [me, setMe] = useState<Me>();
   const [authError, setAuthError] = useState<AuthError>();
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCorrections, setPendingCorrections] = useState(0);
+  const [badgeTick, setBadgeTick] = useState(0);
 
   // Waiting requests for the admin's nav badge, refreshed on every page change.
   useEffect(() => {
     if (!isManager(me?.user.role)) return;
-    void Promise.all([api.leave({ status: 'pending' }), api.swaps({ status: 'pending' })]).then(
-      ([l, s]) => setPendingCount(l.length + s.length),
+    void Promise.all([api.leave({ status: 'pending' }), api.swaps({ status: 'pending' }), api.corrections()]).then(
+      ([l, s, c]) => (setPendingCount(l.length + s.length), setPendingCorrections(c.filter((x) => x.status === 'pending').length)),
       () => undefined,
     );
-  }, [me, page]);
+  }, [me, page, badgeTick]);
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -97,6 +99,7 @@ export function App() {
             <button key={p} className={p === page ? 'active' : ''} onClick={() => setPage(p)}>
               {t(lang, p)}
               {p === 'leave' && pendingCount > 0 && <span className="count">{pendingCount}</span>}
+              {p === 'attendance' && pendingCorrections > 0 && <span className="count">{pendingCorrections}</span>}
             </button>
           ))}
         </nav>
@@ -135,6 +138,10 @@ export function App() {
             <span className="avatar" aria-hidden="true">
               {me.user.nickname.slice(0, 1)}
             </span>
+            <button className="logout" title={t(lang, 'logout')} onClick={() => signOut(me.mode)}>
+              <span aria-hidden="true">⎋</span>
+              <span className="logout-label">{t(lang, 'logout')}</span>
+            </button>
           </div>
         )}
       </header>
@@ -150,9 +157,14 @@ export function App() {
       )}
       <main>
         {authError ? (
+          <div className="auth-error">
           <p className="error">
             {authError.status === 403 ? t(lang, 'notRegistered').replace('{email}', authError.email ?? '') : t(lang, 'notSignedIn')}
           </p>
+            {authError.status === 403 && (
+              <button onClick={() => signOut('iap')}>{t(lang, 'switchAccount')}</button>
+            )}
+          </div>
         ) : page === 'schedule' && rooms && people && me ? (
           <Board lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : page === 'mySchedule' && rooms && people && me ? (
@@ -174,7 +186,7 @@ export function App() {
         ) : page === 'offDays' && isManager(me?.user.role) ? (
           <OffDaysPage lang={lang} />
         ) : page === 'attendance' && people && rooms && isManager(me?.user.role) ? (
-          <AttendancePage lang={lang} people={people} rooms={rooms} />
+          <AttendancePage lang={lang} people={people} rooms={rooms} onChanged={() => setBadgeTick((n) => n + 1)} />
         ) : page === 'team' && me?.user.role === 'admin' ? (
           <TeamPage lang={lang} me={me.user} onChanged={() => void api.people().then(setPeople)} />
         ) : page === 'clockNav' && rooms && me ? (
@@ -191,4 +203,17 @@ export function App() {
       </main>
     </div>
   );
+}
+
+/**
+ * Sign out. Behind IAP this clears IAP's login cookie, so the next visit asks Google again
+ * (and lets a wrong account be swapped). In dev there is no login: forget the "view as" choice.
+ */
+function signOut(mode: Me['mode']) {
+  if (mode === 'dev') {
+    setDevUser('');
+    window.location.assign('/');
+  } else {
+    window.location.assign('/?gcp-iap-mode=CLEAR_LOGIN_COOKIE');
+  }
 }

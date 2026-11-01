@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, type Person, type Room, type Session, type SessionInput } from './api';
 import { t, violationMessage, type Lang, type ViolationLike } from './i18n';
-import { bkkDate, bkkInstant, bkkTime } from './time';
+import { bkkDate, bkkTime, formatDay, liveDate, liveInstant } from './time';
 import { useBackdropClose } from './ui';
 
 export type FormTarget =
@@ -22,7 +22,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
   const firstStaff = (role: 'mc' | 'pd') => editing?.staff.find((s) => s.role === role && !s.replaced)?.personId ?? 0;
 
   const [roomId, setRoomId] = useState(editing?.roomId ?? (target.mode === 'new' ? target.roomId : undefined) ?? 0);
-  const [date, setDate] = useState(editing ? bkkDate(new Date(editing.start)) : target.mode === 'new' ? target.date : '');
+  const [date, setDate] = useState(editing ? liveDate(new Date(editing.start)) : target.mode === 'new' ? target.date : '');
   const [start, setStart] = useState(editing ? bkkTime(new Date(editing.start)) : target.mode === 'new' ? target.start : '10:00');
   const [end, setEnd] = useState(editing ? bkkTime(new Date(editing.end)) : target.mode === 'new' ? target.end : '12:00');
   const [mc, setMc] = useState(firstStaff('mc'));
@@ -46,9 +46,10 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
 
   const input = useMemo((): SessionInput | undefined => {
     if (!roomId || !date || !start || !end) return undefined;
-    const s = bkkInstant(date, start);
-    let e = bkkInstant(date, end);
-    if (e <= s) e = new Date(e.getTime() + 86_400_000); // ends after midnight
+    // The date is the live day; 00:00–05:59 means the night after it (see liveInstant).
+    const s = liveInstant(date, start);
+    let e = liveInstant(date, end);
+    if (e <= s) e = new Date(e.getTime() + 86_400_000); // e.g. 06:00 → 06:00
     // Keep anyone the form doesn't show (a second MC, replaced staff) as they are.
     const shown = new Set([firstStaff('mc'), firstStaff('pd')]);
     const others = (editing?.staff ?? []).filter((x) => !shown.has(x.personId));
@@ -131,6 +132,13 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
             {t(lang, 'endTime')}
             <input type="time" step={1800} value={end} onChange={(e) => setEnd(e.target.value)} />
           </label>
+          {input && bkkDate(new Date(Date.parse(input.end) - 1)) !== date && (
+            <p className="hint wide overnight-hint">
+              {t(lang, 'overnightHint')
+                .replace('{start}', `${formatDay(bkkDate(new Date(input.start)), lang, { weekday: 'short', day: 'numeric', month: 'short' })} ${start}`)
+                .replace('{end}', `${formatDay(bkkDate(new Date(input.end)), lang, { weekday: 'short', day: 'numeric', month: 'short' })} ${end}`)}
+            </p>
+          )}
           <label>
             {t(lang, 'mc')}
             <select value={mc} onChange={(e) => setMc(Number(e.target.value))}>

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type MyAttendance, type Room, type Studio } from './api';
+import { api, type CorrectableSession, type MyAttendance, type Room, type Studio } from './api';
 import { t, type Lang, type StringKey } from './i18n';
-import { bkkDate, bkkTime, formatDay } from './time';
+import { bkkDate, bkkTime, formatDay, liveDate, liveInstant } from './time';
+import { Modal, StatusPill } from './ui';
 
 type Fix = { lat: number; lng: number; accuracy: number };
 
@@ -10,6 +11,20 @@ function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: numbe
   const rad = (d: number) => (d * Math.PI) / 180;
   const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Places a session may be clocked in from: the offsite spot, or any studio. */
+function placesFor(session: Pick<CorrectableSession, 'location' | 'offsite'> | null, studios: Studio[]): Studio[] {
+  return session?.location === 'offsite' && session.offsite ? [{ id: 0, name: 'offsite', ...session.offsite, radiusM: 300 }] : studios;
+}
+
+/** In the area (or nothing to check), and how far the nearest place is. */
+function areaOf(session: Pick<CorrectableSession, 'location' | 'offsite'> | null, studios: Studio[], fix: Fix | undefined) {
+  const places = placesFor(session, studios);
+  const noCheck = session?.location === 'home' || places.length === 0;
+  const nearest = fix && places.length ? Math.min(...places.map((p) => distanceM(fix, p))) : undefined;
+  const inArea = noCheck || Boolean(fix && places.some((p) => distanceM(fix, p) <= p.radiusM));
+  return { places, noCheck, nearest, inArea };
 }
 
 const fmtDistance = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
@@ -43,12 +58,7 @@ export function ClockIn({ lang, rooms }: { lang: Lang; rooms: Room[] }) {
 
   const session = me?.session ?? null;
   const open = me?.open ?? null;
-  // Places this session may be clocked in from: the offsite spot, or any studio.
-  const places: Studio[] =
-    session?.location === 'offsite' && session.offsite ? [{ id: 0, name: 'offsite', ...session.offsite, radiusM: 300 }] : (me?.studios ?? []);
-  const noCheck = session?.location === 'home' || places.length === 0;
-  const nearest = fix && places.length ? places.map((p) => ({ p, d: distanceM(fix, p) })).sort((a, b) => a.d - b.d)[0] : undefined;
-  const inArea = noCheck || Boolean(nearest && places.some((p) => distanceM(fix!, p) <= p.radiusM));
+  const { places, noCheck, nearest, inArea } = areaOf(session, me?.studios ?? [], fix);
   const opensAt = me?.opensAt ? new Date(me.opensAt).getTime() : null;
   const windowOpen = Boolean(session && opensAt !== null && now >= opensAt);
   const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
@@ -92,9 +102,9 @@ export function ClockIn({ lang, rooms }: { lang: Lang; rooms: Room[] }) {
         ) : !fix ? (
           <li className="muted">… {t(lang, 'clockLocating')}</li>
         ) : inArea ? (
-          <li className="ok">✓ {t(lang, 'clockInArea').replace('{d}', fmtDistance(nearest!.d))}</li>
+          <li className="ok">✓ {t(lang, 'clockInArea').replace('{d}', fmtDistance(nearest!))}</li>
         ) : (
-          <li className="bad">✕ {t(lang, 'clockOutArea').replace('{d}', fmtDistance(nearest!.d))}</li>
+          <li className="bad">✕ {t(lang, 'clockOutArea').replace('{d}', fmtDistance(nearest!))}</li>
         )}
         {session ? (
           <li className={windowOpen || open ? 'ok' : 'muted'}>
@@ -165,7 +175,224 @@ export function ClockIn({ lang, rooms }: { lang: Lang; rooms: Room[] }) {
           ])}
         </ul>
       </section>
+
+      {me && <Corrections lang={lang} me={me} fix={fix} geoError={geoError} now={now} codeOf={codeOf} onChanged={load} />}
     </div>
+  );
+}
+
+/**
+ * "Forgot to clock in/out?": sessions of the last 7 days, and the requests sent for them.
+ * A request can only be sent from the session's place, the same check as clocking in.
+ */
+function Corrections({
+  lang,
+  me,
+  fix,
+  geoError,
+  now,
+  codeOf,
+  onChanged,
+}: {
+  lang: Lang;
+  me: MyAttendance;
+  fix?: Fix;
+  geoError: boolean;
+  now: number;
+  codeOf: (id: number) => string;
+  onChanged: () => void;
+}) {
+  const [fixing, setFixing] = useState<CorrectableSession>();
+  // A session still running without a clock-in is clocked in the normal way, not corrected.
+  const sessions = me.correctable.filter((s) => s.attendance || new Date(s.end).getTime() <= now);
+  const when = (iso: string) => `${formatDay(liveDate(new Date(iso)), lang, { weekday: 'short', day: 'numeric', month: 'short' })}`;
+  const time = (iso: string | null) => (iso ? bkkTime(new Date(iso)) : '—');
+
+  return (
+    <section className="corrections">
+      <h2>{t(lang, 'corrTitle')}</h2>
+      <p className="hint">{t(lang, 'corrHint')}</p>
+      {sessions.length === 0 && <p className="muted">{t(lang, 'corrNoSessions')}</p>}
+      <ul className="corr-sessions">
+        {sessions.map((s) => {
+          const a = s.attendance;
+          const ended = new Date(s.end).getTime() <= now;
+          const problem = !a ? 'corrMissed' : !a.clockOutAt && ended ? 'corrNoOut' : null;
+          return (
+            <li key={s.id} className={problem ? 'problem' : ''}>
+              <div>
+                <strong>
+                  {when(s.start)} · {bkkTime(new Date(s.start))}–{bkkTime(new Date(s.end))} · {codeOf(s.roomId)}
+                </strong>
+                <small className="muted block">
+                  In {time(a?.clockInAt ?? null)} · Out {time(a?.clockOutAt ?? null)}
+                  {problem && <span className="pill st-bad"> {t(lang, problem)}</span>}
+                </small>
+              </div>
+              {s.pendingCorrectionId ? (
+                <span className="pill st-alert">{t(lang, 'corrPending')}</span>
+              ) : (
+                <button className={problem ? 'primary' : ''} onClick={() => setFixing(s)}>
+                  {t(lang, 'corrAsk')}
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      {me.corrections.length > 0 && (
+        <>
+          <h3>{t(lang, 'corrMine')}</h3>
+          <ul className="corr-mine">
+            {me.corrections.map((c) => (
+              <li key={c.id}>
+                <div>
+                  <strong>
+                    {when(c.sessionStart)} · {codeOf(c.roomId)}
+                  </strong>
+                  <small className="muted block">
+                    {c.clockInAt && `In ${time(c.clockInAt)}`}
+                    {c.clockInAt && c.clockOutAt && ' · '}
+                    {c.clockOutAt && `Out ${time(c.clockOutAt)}`} · “{c.reason}”
+                  </small>
+                </div>
+                <StatusPill lang={lang} status={c.status} />
+                {c.status === 'pending' && (
+                  <button className="link" onClick={() => void api.withdrawCorrection(c.id).then(onChanged)}>
+                    {t(lang, 'withdraw')}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {fixing && (
+        <CorrectionForm
+          lang={lang}
+          session={fixing}
+          studios={me.studios}
+          fix={fix}
+          geoError={geoError}
+          now={now}
+          label={`${when(fixing.start)} · ${bkkTime(new Date(fixing.start))}–${bkkTime(new Date(fixing.end))} · ${codeOf(fixing.roomId)}`}
+          onClose={() => setFixing(undefined)}
+          onSent={() => (setFixing(undefined), onChanged())}
+        />
+      )}
+    </section>
+  );
+}
+
+function CorrectionForm({
+  lang,
+  session: s,
+  studios,
+  fix,
+  geoError,
+  now,
+  label,
+  onClose,
+  onSent,
+}: {
+  lang: Lang;
+  session: CorrectableSession;
+  studios: Studio[];
+  fix?: Fix;
+  geoError: boolean;
+  now: number;
+  label: string;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const a = s.attendance;
+  const ended = new Date(s.end).getTime() <= now;
+  const day = liveDate(new Date(s.start));
+  const hhmm = (iso: string) => bkkTime(new Date(iso));
+  const [inTime, setInTime] = useState(hhmm(a?.clockInAt ?? s.start));
+  const [outTime, setOutTime] = useState(hhmm(a?.clockOutAt ?? s.end));
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const area = areaOf(s, studios, fix);
+
+  // Times typed on the session's live day: 00:00-05:59 means the morning after.
+  const inAt = inTime ? liveInstant(day, inTime) : null;
+  const outAt = ended && outTime ? liveInstant(day, outTime) : null;
+  const inChanged = inAt && (!a || inAt.getTime() !== new Date(a.clockInAt).setSeconds(0, 0));
+  const outChanged = outAt && (!a?.clockOutAt || outAt.getTime() !== new Date(a.clockOutAt).setSeconds(0, 0));
+  const clockInAt = inChanged ? inAt!.toISOString() : null;
+  const clockOutAt = outChanged ? outAt!.toISOString() : null;
+  const badOrder = Boolean(inAt && outAt && outAt <= inAt);
+  const missingBoth = !a && (!inAt || !outAt);
+  const canSend = area.inArea && reason.trim() !== '' && (clockInAt || clockOutAt) && !badOrder && !missingBoth && !busy;
+
+  async function send() {
+    setBusy(true);
+    setError('');
+    try {
+      const out = await api.requestCorrection({ sessionId: s.id, clockInAt, clockOutAt, reason: reason.trim() }, fix ? { lat: fix.lat, lng: fix.lng } : null);
+      if (out.ok) return onSent();
+      const known = ['out_of_area', 'location_needed', 'already_pending', 'time_outside_session', 'out_before_in', 'both_times_needed', 'session_not_correctable'];
+      setError(known.includes(out.error) ? t(lang, `corrErr_${out.error}` as StringKey) : (out.message ?? out.error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title={t(lang, 'corrAsk')}
+      onClose={onClose}
+      footer={
+        <>
+          <span className="spacer" />
+          <button onClick={onClose}>{t(lang, 'cancelBtn')}</button>
+          <button className="primary" disabled={!canSend} onClick={() => void send()}>
+            {t(lang, 'corrSend')}
+          </button>
+        </>
+      }
+    >
+      <p className="corr-session">{label}</p>
+      <div className="form-grid">
+        <label>
+          Clock in
+          <input type="time" value={inTime} onChange={(e) => setInTime(e.target.value)} />
+          {a && <small className="hint">{t(lang, 'corrNow').replace('{t}', hhmm(a.clockInAt))}</small>}
+        </label>
+        <label>
+          Clock out
+          <input type="time" value={outTime} disabled={!ended} onChange={(e) => setOutTime(e.target.value)} />
+          {!ended ? (
+            <small className="hint">{t(lang, 'corrOutLater')}</small>
+          ) : (
+            a && <small className="hint">{t(lang, 'corrNow').replace('{t}', a.clockOutAt ? hhmm(a.clockOutAt) : '—')}</small>
+          )}
+        </label>
+        <label className="wide">
+          {t(lang, 'corrReason')} *
+          <textarea rows={2} value={reason} placeholder={t(lang, 'corrReasonPh')} onChange={(e) => setReason(e.target.value)} />
+        </label>
+      </div>
+      {badOrder && <p className="error">{t(lang, 'corrErr_out_before_in')}</p>}
+      <ul className="clock-checks">
+        {area.noCheck ? (
+          <li className="ok">✓ {t(lang, s.location === 'home' ? 'clockHome' : 'clockNoStudio')}</li>
+        ) : geoError ? (
+          <li className="bad">✕ {t(lang, 'clockNoGps')}</li>
+        ) : !fix ? (
+          <li className="muted">… {t(lang, 'clockLocating')}</li>
+        ) : area.inArea ? (
+          <li className="ok">✓ {t(lang, 'clockInArea').replace('{d}', fmtDistance(area.nearest!))}</li>
+        ) : (
+          <li className="bad">✕ {t(lang, 'corrMustBeInArea').replace('{d}', fmtDistance(area.nearest!))}</li>
+        )}
+      </ul>
+      {error && <p className="error">{error}</p>}
+    </Modal>
   );
 }
 

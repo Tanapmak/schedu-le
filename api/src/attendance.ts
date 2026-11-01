@@ -105,10 +105,12 @@ export interface AttendanceRow {
   status: 'ok' | 'pending' | 'approved' | 'rejected';
   adjustedHours: number | null;
   adjustNote: string | null;
+  /** Set when an approved time correction wrote these times. */
+  correctionId: number | null;
 }
 
 const attendanceSelect = `SELECT id::int, person_id::int, session_id::int, clock_in_at, clock_out_at, in_distance_m, in_area,
-  out_distance_m, offsite_reason, status, adjusted_hours, adjust_note FROM attendance`;
+  out_distance_m, offsite_reason, status, adjusted_hours, adjust_note, correction_id::int FROM attendance`;
 
 const toRow = (r: any): AttendanceRow => ({
   id: r.id,
@@ -123,6 +125,7 @@ const toRow = (r: any): AttendanceRow => ({
   status: r.status,
   adjustedHours: r.adjusted_hours === null ? null : Number(r.adjusted_hours),
   adjustNote: r.adjust_note,
+  correctionId: r.correction_id ?? null,
 });
 
 /** What the clock-in screen needs: the session to clock in for (now or next), today's records, the studios. */
@@ -233,9 +236,12 @@ export function countedHours(
   return { hours: Math.max(0, Math.round(((end - start) / 3_600_000) * 100) / 100), forgotOut };
 }
 
-/** Admin view of one Bangkok day: every person in a published session, with their clock record. */
+/**
+ * Admin view of one live day (06:00 to 06:00 the next morning, Bangkok), so a 22:00-02:00 session
+ * sits on the day it started: every person in a published session, with their clock record.
+ */
 export async function dayAttendance(db: Db, date: string, now: Date) {
-  const from = new Date(`${date}T00:00:00+07:00`);
+  const from = new Date(`${date}T06:00:00+07:00`);
   const to = new Date(from.getTime() + 86_400_000);
   const { rows: staff } = await db.query(
     `SELECT s.id::int AS session_id, s.room_id::int, lower(s.period) AS start, upper(s.period) AS "end", s.status::text,

@@ -1,7 +1,7 @@
 import type { Board as BoardData, Room, Session } from './api';
 import { leaveHit } from './Board';
 import { t, type Lang } from './i18n';
-import { addDays, bkkDate, bkkInstant, formatDay, hoursBetween, mondayOf, todayBkk } from './time';
+import { addDays, bkkDate, bkkInstant, formatDay, hoursBetween, mondayOf, todayBkk, liveDate } from './time';
 
 /** Monday-start weeks covering the month of `date` (35 or 42 days). */
 export function monthGrid(date: string): string[] {
@@ -52,7 +52,7 @@ export function MonthView({ lang, month, days, rooms, data, nameOf, selected, on
 
   const info = new Map<string, DayInfo>();
   for (const day of days) {
-    const sessions = data.sessions.filter((s) => s.status !== 'cancelled' && bkkDate(new Date(s.start)) === day);
+    const sessions = data.sessions.filter((s) => s.status !== 'cancelled' && liveDate(new Date(s.start)) === day);
     info.set(day, {
       sessions,
       hours: Math.round(sessions.reduce((n, s) => n + hoursBetween(new Date(s.start), new Date(s.end)), 0) * 10) / 10,
