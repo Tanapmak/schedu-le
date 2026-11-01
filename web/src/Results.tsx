@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
-import { api, METRICS, type Metric, type Person, type Reading, type ResultRow, type Room, type Session, type User } from './api';
+import { api, METRICS, type Metric, type Person, type Reading, type ResultRow, type Room, type Session, type User, isManager } from './api';
 import { t, type Lang, type StringKey } from './i18n';
 import { Board } from './Board';
 import { bkkDate, bkkInstant, bkkTime } from './time';
@@ -39,7 +39,7 @@ export function ResultsPage({ lang, user, rooms, people, aiReader }: Props) {
   const [range, setRange] = useState<{ from: Date; to: Date }>();
   const [rows, setRows] = useState<ResultRow[]>();
   const [open, setOpen] = useState<Session>();
-  const isAdmin = user.role === 'admin';
+  const isAdmin = isManager(user.role);
 
   const load = useCallback(() => {
     if (range) api.results(range.from, range.to).then(setRows, () => setRows([]));
@@ -137,7 +137,7 @@ function Readings({ lang, user, rooms, rows, onChanged }: { lang: Lang; user: Us
                   {r.source === 'ai' && <span className="tag ai-tag">AI</span>}
                 </td>
                 <td>
-                  {(user.role === 'admin' || r.recordedBy === user.nickname) && (
+                  {(isManager(user.role) || r.recordedBy === user.nickname) && (
                     <button
                       className="link danger-link"
                       onClick={async () => {

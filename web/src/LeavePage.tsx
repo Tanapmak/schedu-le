@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, type Holiday, type LeaveRequest, type Person, type Room, type SwapRequest, type User } from './api';
+import { api, type Holiday, type LeaveRequest, type Person, type Room, type SwapRequest, type User, isManager } from './api';
 import { t, type Lang } from './i18n';
 import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
@@ -28,7 +28,7 @@ function daysOf(item: { type: 'leave'; l: LeaveRequest } | { type: 'swap'; s: Sw
 
 /** Leave and swap requests in tabs by status, then by date. The admin approves here. */
 export function LeavePage({ lang, user, people, rooms }: Props) {
-  const isAdmin = user.role === 'admin';
+  const isAdmin = isManager(user.role);
   const [leave, setLeave] = useState<LeaveRequest[]>([]);
   const [swaps, setSwaps] = useState<SwapRequest[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);

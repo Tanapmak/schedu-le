@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type LeaveRequest, type Person, type Holiday, type Room, type Session, type SwapRequest, type User } from './api';
+import { api, type LeaveRequest, type Person, type Holiday, type Room, type Session, type SwapRequest, type User, isManager } from './api';
 import { t, type Lang } from './i18n';
 import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
@@ -148,7 +148,7 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
       {leaveOpen && (
         <LeaveForm
           lang={lang}
-          user={{ ...user, role: user.role === 'admin' ? 'mc' : user.role }}
+          user={{ ...user, role: isManager(user.role) ? 'mc' : user.role }}
           people={people}
           rooms={rooms}
           onClose={() => setLeaveOpen(false)}

@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { BadRequest } from './input.js';
 import { getSession, type Db } from './store.js';
+import { isManager, type AppRole } from './auth.js';
 
 /** Core metrics shared by every platform; anything else goes in extraMetrics. */
 export const METRICS = [
@@ -59,10 +60,10 @@ export function parseResultInput(body: Record<string, unknown>): Omit<ResultInpu
 }
 
 /** Admin, or anyone working the session, may record its results. */
-export async function canRecord(db: Db, sessionId: number, user: { id: number; role: string }) {
+export async function canRecord(db: Db, sessionId: number, user: { id: number; role: AppRole }) {
   const s = await getSession(db, sessionId);
   if (!s || s.status === 'draft') return { session: undefined, allowed: false };
-  return { session: s, allowed: user.role === 'admin' || s.staff.some((x) => x.personId === user.id) };
+  return { session: s, allowed: isManager(user.role) || s.staff.some((x) => x.personId === user.id) };
 }
 
 const SAME_BROADCAST_MS = 5 * 60_000;
@@ -170,11 +171,11 @@ export async function resultsBySession(db: Db, from: Date, to: Date): Promise<Ma
   return new Map(rows.map((r) => [r.id, { gmv: r.gmv ?? 0, orders: r.orders ?? 0 }]));
 }
 
-export async function deleteResult(db: Db, id: number, user: { id: number; role: string }): Promise<boolean> {
+export async function deleteResult(db: Db, id: number, user: { id: number; role: AppRole }): Promise<boolean> {
   const { rowCount } = await db.query(
     `DELETE FROM live_results WHERE id = $1 AND ($3 OR recorded_by = $2)
         AND NOT EXISTS (SELECT 1 FROM live_results n WHERE n.broadcast_id = live_results.broadcast_id AND n.id <> live_results.id AND live_results.is_new_broadcast)`,
-    [id, user.id, user.role === 'admin'],
+    [id, user.id, isManager(user.role)],
   );
   return Boolean(rowCount);
 }

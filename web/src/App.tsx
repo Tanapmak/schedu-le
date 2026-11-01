@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, AuthError, downloadPayroll, devUser, setDevUser, type Me, type Person, type Role, type Room } from './api';
+import { api, AuthError, downloadPayroll, devUser, isManager, setDevUser, type Me, type Person, type Role, type Room } from './api';
 import { Board } from './Board';
 import { HoursPage, MyHoursCard } from './Hours';
 import { AttendancePage } from './Attendance';
@@ -8,16 +8,20 @@ import { LeavePage } from './LeavePage';
 import { OffDaysPage } from './OffDays';
 import { MySchedule } from './MySchedule';
 import { ResultsPage } from './Results';
+import { TeamPage } from './Team';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 // Pages each role sees, in nav order. MC/PD get the first four in the phone's bottom bar too.
-const adminPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'attendance', 'hours'];
+// Operation runs everything the master admin does except the team list.
+const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'attendance', 'hours'];
+const adminPages: StringKey[] = [...operationPages, 'team'];
 const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'hours'];
 const viewerPages: StringKey[] = ['schedule', 'hours'];
-const pagesFor = (role?: Role) => (role === 'admin' ? adminPages : role === 'mc' || role === 'pd' ? teamPages : viewerPages);
+const pagesFor = (role?: Role) =>
+  role === 'admin' ? adminPages : role === 'operation' ? operationPages : role === 'mc' || role === 'pd' ? teamPages : viewerPages;
 type Health = 'checking' | 'ok' | 'down';
 
-const roleKey: Record<Role, StringKey> = { admin: 'roleAdmin', mc: 'roleMc', pd: 'rolePd', viewer: 'roleViewer' };
+const roleKey: Record<Role, StringKey> = { admin: 'roleAdmin', operation: 'roleOperation', mc: 'roleMc', pd: 'rolePd', viewer: 'roleViewer' };
 
 // A dev user saved from an earlier database may no longer exist; fall back to the default once.
 async function loadMe(): Promise<Me> {
@@ -44,7 +48,7 @@ export function App() {
 
   // Waiting requests for the admin's nav badge, refreshed on every page change.
   useEffect(() => {
-    if (me?.user.role !== 'admin') return;
+    if (!isManager(me?.user.role)) return;
     void Promise.all([api.leave({ status: 'pending' }), api.swaps({ status: 'pending' })]).then(
       ([l, s]) => setPendingCount(l.length + s.length),
       () => undefined,
@@ -167,10 +171,12 @@ export function App() {
           />
         ) : page === 'results' && rooms && people && me ? (
           <ResultsPage lang={lang} rooms={rooms} people={people} user={me.user} aiReader={Boolean(me.aiReader)} />
-        ) : page === 'offDays' && me?.user.role === 'admin' ? (
+        ) : page === 'offDays' && isManager(me?.user.role) ? (
           <OffDaysPage lang={lang} />
-        ) : page === 'attendance' && people && rooms && me?.user.role === 'admin' ? (
+        ) : page === 'attendance' && people && rooms && isManager(me?.user.role) ? (
           <AttendancePage lang={lang} people={people} rooms={rooms} />
+        ) : page === 'team' && me?.user.role === 'admin' ? (
+          <TeamPage lang={lang} me={me.user} onChanged={() => void api.people().then(setPeople)} />
         ) : page === 'clockNav' && rooms && me ? (
           <ClockIn lang={lang} rooms={rooms} />
         ) : page === 'leave' && rooms && people && me ? (

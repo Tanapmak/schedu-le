@@ -36,7 +36,8 @@ Each person signs in with their Google account. `people.email` links the account
 
 | Role | Can |
 |---|---|
-| `admin` | Add, change, cancel and publish sessions. Sees drafts. |
+| `admin` (master admin) | Everything `operation` can do, plus the **Team** page: add members, set their role, archive people who left. The app never lets the last active admin be demoted or archived, and an admin cannot demote or archive themselves. |
+| `operation` | Run the schedule: add, change, cancel and publish sessions (sees drafts), decide leave and swaps, team off days, results, attendance, hours and the payroll export. |
 | `mc`, `pd`, `viewer` | See the published schedule; their own sessions are marked. File leave and swap requests, see their own hours, record results for their own sessions. |
 
 `AUTH_MODE` picks how the API learns who is calling:
@@ -48,6 +49,8 @@ Each person signs in with their Google account. `people.email` links the account
   so each role can be tried locally. Without a choice, the first admin is used.
 
 A Google account that is not in `people` (or is archived) gets a "not on the team list" page.
+Adding someone on the Team page puts them on the list; they also need IAP access (one by one, or through a Google Group
+that has the "IAP-secured Web App User" role). Team changes are written to `audit_log`.
 
 ## Features beyond the board
 

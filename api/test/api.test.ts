@@ -169,4 +169,46 @@ describe.skipIf(!url)('sessions API', () => {
     expect((await call('POST', '/api/sessions', { roomId: 'x' })).status).toBe(400);
     expect((await call('GET', '/api/board?from=2026-01-01T00:00:00Z&to=2026-06-01T00:00:00Z')).status).toBe(400);
   });
+  it('lets operation run the schedule but not manage the team', async () => {
+    await pool.query(`INSERT INTO people (nickname, position, email, app_role) VALUES ('Ops', 'operation', 'ops@example.com', 'operation')`);
+    const ops = 'ops@example.com';
+    expect((await call('POST', '/api/sessions', draft('TTS 1', '2026-11-05T10:00', '2026-11-05T12:00'), ops)).status).toBe(201);
+    const range = '/api/board?from=2026-11-05T00:00:00%2B07:00&to=2026-11-06T00:00:00%2B07:00';
+    expect((await call('GET', range, undefined, ops)).body.sessions).toHaveLength(1); // sees drafts
+    expect((await call('GET', '/api/team', undefined, ops)).status).toBe(403);
+    expect((await call('POST', '/api/team', { nickname: 'X', position: 'mc', employment: 'full_time', role: 'admin', email: 'x@example.com' }, ops)).status).toBe(403);
+    expect((await call('GET', '/api/team', undefined, 'mc.a@example.com')).status).toBe(403);
+  });
+
+  it('lets the master admin add members, change roles and archive', async () => {
+    const member = { nickname: 'New MC', position: 'mc', employment: 'full_time', role: 'mc', email: 'New.MC@Gmail.com' };
+    const added = await call('POST', '/api/team', member);
+    expect(added).toMatchObject({ status: 200, body: { nickname: 'New MC', email: 'new.mc@gmail.com', role: 'mc', isActive: true } });
+    // The new member can sign in right away.
+    expect((await call('GET', '/api/me', undefined, 'new.mc@gmail.com')).body.user).toMatchObject({ nickname: 'New MC', role: 'mc' });
+
+    expect(await call('POST', '/api/team', { ...member, email: 'other@gmail.com' })).toMatchObject({ status: 409, body: { field: 'nickname' } });
+    expect(await call('POST', '/api/team', { ...member, nickname: 'Other', email: 'mc.a@example.com' })).toMatchObject({ status: 409, body: { field: 'email' } });
+    expect((await call('POST', '/api/team', { ...member, nickname: 'NoMail', email: '' })).status).toBe(400);
+    expect((await call('POST', '/api/team', { ...member, nickname: 'Guest', email: '', role: 'viewer', employment: 'guest' })).status).toBe(200);
+
+    const id = added.body.id;
+    expect((await call('PUT', `/api/team/${id}`, { ...member, role: 'operation' })).body.role).toBe('operation');
+    expect((await call('PUT', `/api/team/${id}`, { ...member, isActive: false })).body.isActive).toBe(false);
+    expect((await call('GET', '/api/me', undefined, 'new.mc@gmail.com')).status).toBe(403); // archived: locked out
+
+    const { rows } = await pool.query(`SELECT count(*)::int AS n FROM audit_log WHERE entity = 'people' AND entity_id = $1`, [id]);
+    expect(rows[0].n).toBe(3);
+  });
+
+  it('never leaves the team without a master admin', async () => {
+    const boss = (await call('GET', '/api/me')).body.user;
+    const me = { nickname: 'Boss', position: 'operation', employment: 'full_time', email: 'boss@example.com' };
+    expect(await call('PUT', `/api/team/${boss.id}`, { ...me, role: 'operation' })).toMatchObject({ status: 409, body: { error: 'cannot_demote_self' } });
+    expect((await call('PUT', `/api/team/${boss.id}`, { ...me, role: 'admin', isActive: false })).status).toBe(409);
+    // A second admin cannot demote the only other one either if that would leave none.
+    await pool.query(`INSERT INTO people (nickname, position, email, app_role) VALUES ('Boss 2', 'operation', 'boss2@example.com', 'admin')`);
+    const two = (await call('GET', '/api/me', undefined, 'boss2@example.com')).body.user;
+    expect((await call('PUT', `/api/team/${two.id}`, { ...me, nickname: 'Boss 2', email: 'boss2@example.com', role: 'mc' })).status).toBe(200);
+  });
 });

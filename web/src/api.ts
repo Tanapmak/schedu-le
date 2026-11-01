@@ -148,7 +148,24 @@ export interface HoursRow {
   vsKpi: number | null;
 }
 
-export type Role = 'admin' | 'mc' | 'pd' | 'viewer';
+export type Role = 'admin' | 'operation' | 'mc' | 'pd' | 'viewer';
+
+/** Admin (master) and operation both run the schedule; only admin manages the team. */
+export const isManager = (role: Role | undefined) => role === 'admin' || role === 'operation';
+
+export interface Member {
+  id: number;
+  nickname: string;
+  fullName: string | null;
+  email: string | null;
+  position: Person['position'];
+  employment: Person['employment'];
+  role: Role;
+  isActive: boolean;
+  startDate: string | null;
+}
+export type MemberInput = Omit<Member, 'id'>;
+export type MemberSave = { ok: true; member: Member } | { ok: false; error: string; field?: string; message?: string };
 
 export interface User {
   id: number;
@@ -377,6 +394,11 @@ export const api = {
     (await request<{ ok: boolean }>('POST', `/api/attendance/${id}/decision`, { decision })).data,
   adjustAttendance: async (id: number, hours: number | null, note: string) =>
     (await request<{ ok: boolean }>('POST', `/api/attendance/${id}/adjust`, { hours, note })).data,
+  team: async () => (await request<Member[]>('GET', '/api/team')).data,
+  saveMember: async (input: MemberInput, id?: number): Promise<MemberSave> => {
+    const { status, data } = await request<Member & { error?: string; field?: string; message?: string }>(id ? 'PUT' : 'POST', id ? `/api/team/${id}` : '/api/team', input);
+    return status === 200 ? { ok: true, member: data } : { ok: false, error: data.error ?? 'error', field: data.field, message: data.message };
+  },
   studios: async () => (await request<Studio[]>('GET', '/api/studios')).data,
   saveStudio: async (s: Omit<Studio, 'id'> & { id?: number }) => (await request<{ ok: boolean; id: number }>('POST', '/api/studios', s)).data,
   deleteResult: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/results/${id}`)).data,
