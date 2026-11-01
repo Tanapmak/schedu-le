@@ -235,6 +235,8 @@ const strings = {
   offDayAdded: { th: 'เพิ่มวันหยุดแล้ว', en: 'Off day added', zh: '已添加休息日' },
   hello: { th: 'สวัสดี', en: 'Hello', zh: '你好' },
   whoOnLeave: { th: 'คนลา', en: 'On leave', zh: '请假人员' },
+  typeCol: { th: 'ประเภท', en: 'Type', zh: '类型' },
+  filedAt: { th: 'ยื่นเมื่อ', en: 'Filed', zh: '提交于' },
   summaryPanel: { th: 'แผงสรุป', en: 'Summary', zh: '摘要面板' },
   toHandle: { th: 'ต้องจัดการ', en: 'To handle', zh: '待处理' },
   sessionsNoPd: { th: 'รอบที่ยังไม่มี PD', en: 'Sessions without a PD', zh: '缺少 PD 的场次' },

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type LeaveRequest, type Outcome, type Person, type Room, type SwapRequest, type User } from './api';
 import { t, type Lang, type ViolationLike } from './i18n';
+import { bkkDate, bkkTime, formatDay } from './time';
 import { Checks, periodLabel, sessionLabel, StatusPill } from './ui';
 
 interface Props {
@@ -14,13 +15,15 @@ interface Props {
   decide?: boolean;
   /** Lay the requests out as a grid of cards. */
   cards?: boolean;
+  /** Lay the requests out as a table (admin's leave page). */
+  table?: boolean;
   onChanged: () => void;
 }
 
 type Row = { type: 'leave'; at: string; item: LeaveRequest } | { type: 'swap'; at: string; item: SwapRequest };
 
 /** Leave and swap requests in one list, newest first, with the actions the viewer may take. */
-export function RequestList({ lang, user, people, rooms, leave, swaps, decide, cards, onChanged }: Props) {
+export function RequestList({ lang, user, people, rooms, leave, swaps, decide, cards, table, onChanged }: Props) {
   const nameOf = (id: number) => people.find((p) => p.id === id)?.nickname ?? `#${id}`;
   const rows: Row[] = [
     ...leave.map((item): Row => ({ type: 'leave', at: item.createdAt, item })),
@@ -28,6 +31,31 @@ export function RequestList({ lang, user, people, rooms, leave, swaps, decide, c
   ].sort((a, b) => b.at.localeCompare(a.at));
 
   if (rows.length === 0) return <p className="muted">{t(lang, decide ? 'nothingPending' : 'noRequests')}</p>;
+
+  if (table)
+    return (
+      <div className="table-wrap">
+        <table className="data requests">
+          <thead>
+            <tr>
+              <th>{t(lang, 'name')}</th>
+              <th>{t(lang, 'position')}</th>
+              <th>{t(lang, 'date')}</th>
+              <th>{t(lang, 'typeCol')}</th>
+              <th>{t(lang, 'reason')}</th>
+              <th>{t(lang, 'filedAt')}</th>
+              <th>{t(lang, 'status')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <RequestRow key={`${r.type}${r.item.id}`} row={r} asRow {...{ lang, user, people, rooms, decide, onChanged, nameOf }} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
 
   return (
     <ul className={`request-list${cards ? ' cards' : ''}`}>
@@ -47,7 +75,8 @@ function RequestRow({
   decide,
   onChanged,
   nameOf,
-}: Omit<Props, 'leave' | 'swaps' | 'cards'> & { row: Row; nameOf: (id: number) => string }) {
+  asRow,
+}: Omit<Props, 'leave' | 'swaps' | 'cards' | 'table'> & { row: Row; nameOf: (id: number) => string; asRow?: boolean }) {
   const [violations, setViolations] = useState<ViolationLike[]>([]);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -75,10 +104,14 @@ function RequestRow({
   let who: string;
   let what: string;
   let kindLabel: string;
+  let name: string;
+  let position: string;
   if (row.type === 'leave') {
     const l = row.item;
     const pos = people.find((p) => p.id === l.personId)?.position;
     who = `${nameOf(l.personId)}${pos === 'mc' || pos === 'pd' ? ` · ${pos.toUpperCase()}` : ''}`;
+    name = nameOf(l.personId);
+    position = pos === 'mc' || pos === 'pd' ? pos.toUpperCase() : pos === 'operation' ? 'OP' : '';
     what = periodLabel(lang, l.start, l.end);
     kindLabel = t(lang, l.kind === 'urgent' ? 'leaveUrgent' : 'leaveNormal');
   } else {
@@ -90,12 +123,65 @@ function RequestRow({
       theirs: s.targetSession ? sessionLabel(lang, s.targetSession, rooms) : '',
     };
     who = `${values.from} → ${values.to}`;
+    name = who;
+    const rp = people.find((p) => p.id === s.requesterId)?.position;
+    position = rp === 'mc' || rp === 'pd' ? rp.toUpperCase() : '';
     what = t(lang, s.targetSession ? 'swapTradeText' : 'swapGiveText').replace(/\{(\w+)\}/g, (_, k: keyof typeof values) => values[k]);
     kindLabel = t(lang, 'swapLabel');
   }
 
+  const urgent = row.type === 'leave' && row.item.kind === 'urgent';
+  const actions = pending && (
+    <div className="request-actions">
+      {decide && user.role === 'admin' && (
+        <>
+          <button disabled={busy} onClick={() => run(decideCall('reject'))}>
+            {t(lang, 'reject')}
+          </button>
+          <button className="primary" disabled={busy} onClick={() => run(decideCall('approve'))}>
+            {t(lang, needsConfirm ? 'approveAnyway' : 'approve')}
+          </button>
+        </>
+      )}
+      {ownerId === user.id && (
+        <button className="link" disabled={busy} onClick={() => run(withdrawCall)}>
+          {t(lang, 'withdraw')}
+        </button>
+      )}
+    </div>
+  );
+
+  if (asRow)
+    return (
+      <>
+        <tr className={urgent ? 'urgent' : ''}>
+          <td>
+            <strong>{name}</strong>
+          </td>
+          <td>{position}</td>
+          <td className="wrap">{what}</td>
+          <td>
+            <span className={urgent ? 'urgent-text' : ''}>{kindLabel}</span>
+          </td>
+          <td className="wrap muted">{item.reason ?? '—'}</td>
+          <td className="muted">{formatDay(bkkDate(new Date(item.createdAt)), lang, { day: 'numeric', month: 'short' })} {bkkTime(new Date(item.createdAt))}</td>
+          <td>
+            <StatusPill lang={lang} status={item.status} />
+          </td>
+          <td>{actions}</td>
+        </tr>
+        {violations.length > 0 && (
+          <tr className="checks-row">
+            <td colSpan={8}>
+              <Checks lang={lang} violations={violations} people={people} rooms={rooms} />
+            </td>
+          </tr>
+        )}
+      </>
+    );
+
   return (
-    <li className={row.type === 'leave' && row.item.kind === 'urgent' ? 'urgent' : ''}>
+    <li className={urgent ? 'urgent' : ''}>
       <div className="request-main">
         <span className={`tag${row.type === 'leave' && row.item.kind === 'urgent' ? ' tag-urgent' : ''}`}>{kindLabel}</span>
         <StatusPill lang={lang} status={item.status} />

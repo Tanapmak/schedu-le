@@ -122,7 +122,7 @@ export function LeavePage({ lang, user, people, rooms }: Props) {
         leave={shownLeave}
         swaps={shownSwaps}
         decide={isAdmin}
-        cards
+        table
         onChanged={load}
       />
 
