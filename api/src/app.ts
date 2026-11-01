@@ -2,7 +2,8 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type pg from 'pg';
-import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.js';
+import { addMember, Conflict, LastAdmin, listTeam, parseMember, updateMember, type Member } from './team.js';
+import { authConfig, authenticate, isManager, requireManager, requireMasterAdmin, type AuthConfig } from './auth.js';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
 import { adjustAttendance, clockIn, clockOut, dayAttendance, decideAttendance, listStudios, myAttendance, saveStudio, type Fix } from './attendance.js';
@@ -64,6 +65,25 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.json(await listPeople(pool));
   });
 
+  // ---- Team list and roles (master admin only). People are archived, never deleted,
+  // because sessions, leave and results point at them.
+  app.get('/api/team', requireMasterAdmin, async (_req, res) => {
+    res.json(await listTeam(pool));
+  });
+
+  app.post('/api/team', requireMasterAdmin, async (req, res) => {
+    await teamWrite(res, () => addMember(pool, parseMember(req.body), req.user!.id));
+  });
+
+  app.put('/api/team/:id', requireMasterAdmin, async (req, res) => {
+    const id = parseId(req.params.id, 'id');
+    const input = parseMember(req.body);
+    if (id === req.user!.id && (input.role !== 'admin' || !input.isActive)) {
+      return void res.status(409).json({ error: 'cannot_demote_self' });
+    }
+    await teamWrite(res, () => updateMember(pool, id, input, req.user!.id));
+  });
+
   // Everything the board needs for a date range: sessions, leave and holidays.
   app.get('/api/board', async (req, res) => {
     const from = parseDate(req.query.from, 'from');
@@ -77,12 +97,12 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
       holidaysBetween(pool, from, to),
     ]);
     // Drafts are the admin's work in progress; the team only sees what is published.
-    const visible = req.user?.role === 'admin' ? sessions : sessions.filter((x) => x.status !== 'draft');
+    const visible = isManager(req.user?.role) ? sessions : sessions.filter((x) => x.status !== 'draft');
     res.json({ sessions: visible, leaves, holidays });
   });
 
   // Live check while the admin fills the form; saves nothing.
-  app.post('/api/sessions/check', requireAdmin, async (req, res) => {
+  app.post('/api/sessions/check', requireManager, async (req, res) => {
     const input = parseSessionInput(req.body);
     const id = req.body.id === undefined ? undefined : parseId(req.body.id, 'id');
     const client = await pool.connect();
@@ -93,19 +113,19 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     }
   });
 
-  app.post('/api/sessions', requireAdmin, async (req, res) => {
+  app.post('/api/sessions', requireManager, async (req, res) => {
     const result = await saveSession(pool, parseSessionInput(req.body), { confirm: req.body.confirm === true, actorId: req.user?.id });
     if (result.ok) res.status(201).json(result);
     else res.status(result.status).json(result);
   });
 
-  app.put('/api/sessions/:id', requireAdmin, async (req, res) => {
+  app.put('/api/sessions/:id', requireManager, async (req, res) => {
     const id = parseId(req.params.id, 'id');
     const result = await saveSession(pool, parseSessionInput(req.body), { id, confirm: req.body.confirm === true });
     res.status(result.ok ? 200 : result.status).json(result);
   });
 
-  app.post('/api/sessions/:id/cancel', requireAdmin, async (req, res) => {
+  app.post('/api/sessions/:id/cancel', requireManager, async (req, res) => {
     const id = parseId(req.params.id, 'id');
     const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
     if (!reason) throw new BadRequest('reason is required');
@@ -119,20 +139,20 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   });
 
   // Joins a back-to-back session (same room, people, status) into this one.
-  app.post('/api/sessions/:id/merge', requireAdmin, async (req, res) => {
+  app.post('/api/sessions/:id/merge', requireManager, async (req, res) => {
     const result = await mergeSessions(pool, parseId(req.params.id, 'id'), parseId(req.body.withId, 'withId'));
     res.status(result.ok ? 200 : 409).json(result);
   });
 
   // Only drafts can be deleted; published sessions are cancelled so hours and history stay.
-  app.delete('/api/sessions/:id', requireAdmin, async (req, res) => {
+  app.delete('/api/sessions/:id', requireManager, async (req, res) => {
     const id = parseId(req.params.id, 'id');
     const { rowCount } = await pool.query(`DELETE FROM sessions WHERE id = $1 AND status = 'draft'`, [id]);
     res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
   });
 
   // Publishes every draft that starts in [from, to).
-  app.post('/api/publish', requireAdmin, async (req, res) => {
+  app.post('/api/publish', requireManager, async (req, res) => {
     const from = parseDate(req.body.from, 'from');
     const to = parseDate(req.body.to, 'to');
     const { rowCount } = await pool.query(
@@ -146,11 +166,11 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   app.get('/api/hours', async (req, res) => {
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
     const rows = await hoursReport(pool, req.query.month);
-    res.json({ month: req.query.month, rows: req.user!.role === 'admin' ? rows : rows.filter((r) => r.personId === req.user!.id) });
+    res.json({ month: req.query.month, rows: isManager(req.user!.role) ? rows : rows.filter((r) => r.personId === req.user!.id) });
   });
 
   // ---- Payroll workbook (hours, KPI, results, freelance lives). No pay rates are stored in the app.
-  app.get('/api/export/payroll', requireAdmin, async (req, res) => {
+  app.get('/api/export/payroll', requireManager, async (req, res) => {
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
     const wb = await payrollWorkbook(pool, req.query.month);
     res.setHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -217,7 +237,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
 
   // ---- Leave: MC/PD file for themselves, the admin may file for anyone and decides.
   app.get('/api/leave', async (req, res) => {
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = isManager(req.user!.role);
     const mine = req.query.mine === '1' || !isAdmin;
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     const from = req.query.from ? parseDate(req.query.from, 'from') : undefined;
@@ -226,14 +246,14 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   });
 
   app.post('/api/leave', async (req, res) => {
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = isManager(req.user!.role);
     const personId = isAdmin && req.body.personId !== undefined ? parseId(req.body.personId, 'personId') : req.user!.id;
     const kind = req.body.kind === 'urgent' ? 'urgent' : 'normal';
     const input = { personId, start: parseDate(req.body.start, 'start'), end: parseDate(req.body.end, 'end'), kind, reason: text(req.body.reason) } as const;
     send(res, await fileLeave(pool, input, { confirm: req.body.confirm === true, actorId: req.user!.id }), true);
   });
 
-  app.post('/api/leave/:id/decision', requireAdmin, async (req, res) => {
+  app.post('/api/leave/:id/decision', requireManager, async (req, res) => {
     const out = await decideLeave(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), {
       confirm: req.body.confirm === true,
       actorId: req.user!.id,
@@ -242,13 +262,13 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   });
 
   app.post('/api/leave/:id/withdraw', async (req, res) => {
-    const ok = await withdrawLeave(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: req.user!.role === 'admin' });
+    const ok = await withdrawLeave(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: isManager(req.user!.role) });
     res.status(ok ? 200 : 404).json({ ok });
   });
 
   // ---- Shift swaps: hand my place to someone, or trade places with them; the admin approves.
   app.get('/api/swaps', async (req, res) => {
-    const isAdmin = req.user!.role === 'admin';
+    const isAdmin = isManager(req.user!.role);
     const mine = req.query.mine === '1' || !isAdmin;
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
     res.json(await listSwaps(pool, { personId: mine ? req.user!.id : undefined, status }));
@@ -265,7 +285,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     send(res, out, true);
   });
 
-  app.post('/api/swaps/:id/decision', requireAdmin, async (req, res) => {
+  app.post('/api/swaps/:id/decision', requireManager, async (req, res) => {
     const out = await decideSwap(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), {
       confirm: req.body.confirm === true,
       actorId: req.user!.id,
@@ -274,7 +294,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   });
 
   app.post('/api/swaps/:id/withdraw', async (req, res) => {
-    const ok = await withdrawSwap(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: req.user!.role === 'admin' });
+    const ok = await withdrawSwap(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: isManager(req.user!.role) });
     res.status(ok ? 200 : 404).json({ ok });
   });
 
@@ -286,7 +306,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.json(await holidaysBetween(pool, from, to));
   });
 
-  app.post('/api/holidays', requireAdmin, async (req, res) => {
+  app.post('/api/holidays', requireManager, async (req, res) => {
     const name = text(req.body.name);
     if (!name) throw new BadRequest('name is required');
     const start = parseDate(req.body.start, 'start');
@@ -300,7 +320,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.status(201).json({ ok: true, id: rows[0].id, sessionsOnDay: clashes.map((s) => s.id) });
   });
 
-  app.delete('/api/holidays/:id', requireAdmin, async (req, res) => {
+  app.delete('/api/holidays/:id', requireManager, async (req, res) => {
     const { rowCount } = await pool.query('DELETE FROM holidays WHERE id = $1', [parseId(req.params.id, 'id')]);
     res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
   });
@@ -327,18 +347,18 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.status(out.ok ? 200 : out.status).json(out);
   });
 
-  app.get('/api/attendance', requireAdmin, async (req, res) => {
+  app.get('/api/attendance', requireManager, async (req, res) => {
     const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : null;
     if (!date) throw new BadRequest('date must be YYYY-MM-DD');
     res.json(await dayAttendance(pool, date, new Date()));
   });
 
-  app.post('/api/attendance/:id/decision', requireAdmin, async (req, res) => {
+  app.post('/api/attendance/:id/decision', requireManager, async (req, res) => {
     const ok = await decideAttendance(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), req.user!.id);
     res.status(ok ? 200 : 404).json({ ok });
   });
 
-  app.post('/api/attendance/:id/adjust', requireAdmin, async (req, res) => {
+  app.post('/api/attendance/:id/adjust', requireManager, async (req, res) => {
     const raw = req.body.hours;
     const hours = raw === null || raw === '' || raw === undefined ? null : Number(raw);
     if (hours !== null && (!Number.isFinite(hours) || hours < 0 || hours > 24)) throw new BadRequest('hours must be 0 to 24');
@@ -350,7 +370,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.json(await listStudios(pool));
   });
 
-  app.post('/api/studios', requireAdmin, async (req, res) => {
+  app.post('/api/studios', requireManager, async (req, res) => {
     const at = fixOf(req.body);
     const name = text(req.body.name);
     const radiusM = Math.round(Number(req.body.radiusM ?? 100));
@@ -358,6 +378,18 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     const id = await saveStudio(pool, { id: req.body.id ? parseId(req.body.id, 'id') : undefined, name, ...at, radiusM });
     res.json({ ok: true, id });
   });
+
+  async function teamWrite(res: Response, save: () => Promise<Member | undefined>) {
+    try {
+      const member = await save();
+      if (!member) return void res.status(404).json({ error: 'not_found' });
+      res.json(member);
+    } catch (err) {
+      if (err instanceof Conflict) return void res.status(409).json({ error: err.message, field: err.field });
+      if (err instanceof LastAdmin) return void res.status(409).json({ error: 'last_admin' });
+      throw err;
+    }
+  }
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'not_found' });

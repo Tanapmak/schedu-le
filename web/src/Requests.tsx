@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { api, type LeaveRequest, type Outcome, type Person, type Room, type SwapRequest, type User } from './api';
+import { api, type LeaveRequest, type Outcome, type Person, type Room, type SwapRequest, type User, isManager } from './api';
 import { t, type Lang, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay } from './time';
 import { RequestPreview } from './RequestPreview';
@@ -136,7 +136,7 @@ function RequestRow({
   const urgent = row.type === 'leave' && row.item.kind === 'urgent';
   const actions = pending && (
     <div className="request-actions">
-      {decide && user.role === 'admin' && (
+      {decide && isManager(user.role) && (
         <>
           <button disabled={busy} onClick={() => run(decideCall('reject'))}>
             {t(lang, 'reject')}
@@ -218,7 +218,7 @@ function RequestRow({
       {item.reason && <p className="request-reason">{item.reason}</p>}
       {pending && (
         <div className="request-actions">
-          {decide && user.role === 'admin' && (
+          {decide && isManager(user.role) && (
             <>
               <button className="primary" disabled={busy} onClick={() => run(decideCall('approve'))}>
                 {t(lang, needsConfirm ? 'approveAnyway' : 'approve')}

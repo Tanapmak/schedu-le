@@ -8,3 +8,8 @@ INSERT INTO people (nickname, email, position, app_role) VALUES
   ('PD A',      'pd.a@example.com',  'pd',        'pd'),
   ('PD B',      'pd.b@example.com',  'pd',        'pd')
 ON CONFLICT (nickname) DO NOTHING;
+
+-- Operation role (run separately: the role value comes from migration 007).
+INSERT INTO people (nickname, email, position, app_role) VALUES
+  ('Ops Dev', 'ops@example.com', 'operation', 'operation')
+ON CONFLICT (nickname) DO NOTHING;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Holiday, type Person, type Room, type User } from './api';
+import { api, type Holiday, type Person, type Room, type User, isManager } from './api';
 import { t, type Lang, type ViolationLike } from './i18n';
 import { addDays, bkkDate, bkkInstant, formatDay, todayBkk } from './time';
 import { Checks, Modal, outcomeState } from './ui';
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props) {
-  const isAdmin = user.role === 'admin';
+  const isAdmin = isManager(user.role);
   const [personId, setPersonId] = useState(user.id);
   const [kind, setKind] = useState<'normal' | 'urgent'>('normal');
   const [from, setFrom] = useState(addDays(todayBkk(), 1));

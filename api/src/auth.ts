@@ -2,7 +2,10 @@ import type { NextFunction, Request, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import type pg from 'pg';
 
-export type AppRole = 'admin' | 'mc' | 'pd' | 'viewer';
+export type AppRole = 'admin' | 'operation' | 'mc' | 'pd' | 'viewer';
+
+/** Admin (master) and operation both run the schedule; only admin manages the team. */
+export const isManager = (role: AppRole | undefined) => role === 'admin' || role === 'operation';
 
 export interface User {
   id: number;
@@ -87,7 +90,14 @@ export function authenticate(pool: pg.Pool, config: AuthConfig) {
   };
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (req.user?.role === 'admin') next();
+/** Schedule management: master admin or operation. */
+export function requireManager(req: Request, res: Response, next: NextFunction) {
+  if (isManager(req.user?.role)) next();
   else res.status(403).json({ error: 'admin_only' });
+}
+
+/** Team list and roles: master admin only. */
+export function requireMasterAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.role === 'admin') next();
+  else res.status(403).json({ error: 'master_admin_only' });
 }

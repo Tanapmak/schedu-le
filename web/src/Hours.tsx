@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type HoursRow, type User } from './api';
+import { api, type HoursRow, type User, isManager } from './api';
 import { t, type Lang, type StringKey } from './i18n';
 import { todayBkk } from './time';
 
@@ -63,11 +63,11 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
             {t(lang, 'month')}
             <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
           </label>
-          {user.role === 'admin' && exportButton?.(month)}
+          {isManager(user.role) && exportButton?.(month)}
         </div>
       </div>
       <p className="hint">{t(lang, 'kpiHint')}</p>
-      {user.role === 'admin' && <p className="hint">{t(lang, 'exportHint')}</p>}
+      {isManager(user.role) && <p className="hint">{t(lang, 'exportHint')}</p>}
       {failed && <p className="error">{t(lang, 'loadFailed')}</p>}
       {!rows && !failed && <p className="muted">{t(lang, 'loading')}</p>}
 

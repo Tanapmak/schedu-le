@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { api, type Board as BoardData, type HoursRow, type Person, type Room, type Session, type User } from './api';
+import { api, type Board as BoardData, type HoursRow, type Person, type Room, type Session, type User, isManager } from './api';
 import { t, violationMessage, type Lang } from './i18n';
 import { MonthView, addMonths, monthGrid } from './MonthView';
 import { SessionForm, type FormTarget } from './SessionForm';
@@ -50,7 +50,7 @@ export function leaveHit(s: Session, leaves: BoardData['leaves']): LeaveHit | un
 
 export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionOpen, badge, onRange }: Props) {
   // Only the admin edits; MC and PD see the published schedule with their own sessions marked.
-  const canEdit = user.role === 'admin' && mode === 'schedule';
+  const canEdit = isManager(user.role) && mode === 'schedule';
   const [view, setView] = useState<View>('day');
   const [date, setDate] = useState(todayBkk());
   const [data, setData] = useState<BoardData>();
@@ -58,7 +58,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
   const [form, setForm] = useState<FormTarget>();
   const [preview, setPreview] = useState<Preview>();
   const [savingId, setSavingId] = useState<number>();
-  const showPanelOption = user.role === 'admin' && mode === 'schedule';
+  const showPanelOption = isManager(user.role) && mode === 'schedule';
   const [panelOn, setPanelOn] = useState(() => {
     try {
       return localStorage.getItem('summaryPanel') !== 'off';
