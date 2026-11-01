@@ -7,7 +7,8 @@ import type { Rules } from './types.js';
 export async function loadRules(client: Db): Promise<Rules> {
   const { rows } = await client.query<{ key: string; value: unknown }>('SELECT key, value FROM rules');
   const byKey = new Map(rows.map((r) => [r.key, r.value]));
-  const get = <T>(key: string): T => {
+  const get = <T>(key: string, fallback?: T): T => {
+    if (!byKey.has(key) && fallback !== undefined) return fallback;
     if (!byKey.has(key)) throw new Error(`Missing rule "${key}" (run npm run seed)`);
     return byKey.get(key) as T;
   };
@@ -15,6 +16,7 @@ export async function loadRules(client: Db): Promise<Rules> {
     kpiHours: get('kpi_hours'),
     maxHours: get('max_hours'),
     leaveQuotaPerDay: get('leave_quota_per_day'),
+    leaveMaxDaysPerMonth: get('leave_max_days_per_month', { mc: 8, pd: 8 }),
     sessionSlotMinutes: get<number>('session_slot_minutes'),
   };
 }

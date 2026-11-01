@@ -68,19 +68,38 @@ export async function canRecord(db: Db, sessionId: number, user: { id: number; r
 const SAME_BROADCAST_MS = 5 * 60_000;
 
 /**
- * Suggests the Session Flag. It continues the room's latest broadcast when that broadcast
- * started at (about) the same time as this one; otherwise it is a new broadcast. Without a
- * start time, a reading within 3 hours of the room's last one is treated as continuing.
+ * Suggests the Session Flag for a reading of `session`; the PD can still change it.
+ * - The session already has readings: continues.
+ * - The live start time was read off the screen: continues when the room's latest reading
+ *   started at (about) the same time, else new.
+ * - Otherwise: continues when an earlier session ran in the same room that day, else new
+ *   (the first session of the day in a room starts a broadcast).
  */
-export async function suggestNewBroadcast(db: Db, roomId: number, liveStartedAt: Date | null, capturedAt: Date): Promise<boolean> {
-  const { rows } = await db.query(
-    `SELECT live_started_at, captured_at FROM live_results WHERE room_id = $1 ORDER BY captured_at DESC, id DESC LIMIT 1`,
-    [roomId],
+export async function suggestNewBroadcast(
+  db: Db,
+  session: { id?: number; roomId: number; start: Date },
+  liveStartedAt: Date | null,
+): Promise<boolean> {
+  if (session.id !== undefined) {
+    const { rowCount } = await db.query('SELECT 1 FROM live_results WHERE session_id = $1 LIMIT 1', [session.id]);
+    if (rowCount) return false;
+  }
+  if (liveStartedAt) {
+    const { rows } = await db.query(
+      `SELECT live_started_at FROM live_results WHERE room_id = $1 AND live_started_at IS NOT NULL ORDER BY captured_at DESC, id DESC LIMIT 1`,
+      [session.roomId],
+    );
+    if (rows[0]) return Math.abs(rows[0].live_started_at.getTime() - liveStartedAt.getTime()) > SAME_BROADCAST_MS;
+  }
+  const { rowCount } = await db.query(
+    `SELECT 1 FROM sessions
+      WHERE room_id = $1 AND status = 'published' AND id IS DISTINCT FROM $3
+        AND lower(period) < $2
+        AND (lower(period) AT TIME ZONE 'Asia/Bangkok')::date = ($2::timestamptz AT TIME ZONE 'Asia/Bangkok')::date
+      LIMIT 1`,
+    [session.roomId, session.start, session.id ?? null],
   );
-  const last = rows[0];
-  if (!last) return true;
-  if (liveStartedAt && last.live_started_at) return Math.abs(last.live_started_at.getTime() - liveStartedAt.getTime()) > SAME_BROADCAST_MS;
-  return Math.abs(capturedAt.getTime() - last.captured_at.getTime()) > 3 * 3_600_000;
+  return !rowCount;
 }
 
 export async function saveResult(pool: pg.Pool, roomId: number, input: ResultInput, recordedBy: number): Promise<number> {

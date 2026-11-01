@@ -9,6 +9,8 @@ export interface Rules {
   kpiHours: Record<StaffRole, number>;
   maxHours: Record<StaffRole, number>;
   leaveQuotaPerDay: Record<StaffRole, number>;
+  /** Normal leave days a full-time MC/PD may take per month (urgent leave not counted). */
+  leaveMaxDaysPerMonth: Record<StaffRole, number>;
   sessionSlotMinutes: number; // default length for a new session
 }
 
@@ -18,6 +20,7 @@ export interface Person {
   position: Position;
   isActive: boolean;
   maxHours?: number | null; // per-person override of rules.maxHours
+  employment?: 'full_time' | 'intern' | 'freelance' | 'guest';
 }
 
 export interface Room {

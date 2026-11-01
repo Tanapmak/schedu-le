@@ -138,6 +138,7 @@ describe.skipIf(!url)('database schema', () => {
       kpiHours: { mc: 96, pd: 132 },
       maxHours: { mc: 124, pd: 176 },
       leaveQuotaPerDay: { mc: 2, pd: 2 },
+      leaveMaxDaysPerMonth: { mc: 8, pd: 8 },
       sessionSlotMinutes: 120,
     });
   });

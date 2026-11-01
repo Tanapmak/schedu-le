@@ -119,6 +119,32 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect((await call('POST', '/api/leave', fullDay('2030-01-20'), 'mc.d@example.com')).body.violations[0].code).toBe('leave_quota_full');
   });
 
+  it('refuses leave on a team off day, for urgent leave too', async () => {
+    await call('POST', '/api/holidays', { name: 'ออฟตาราง', ...fullDay('2030-01-25') });
+    const res = await call('POST', '/api/leave', fullDay('2030-01-25'), MC_A);
+    expect(res).toMatchObject({ status: 422, body: { violations: [{ code: 'holiday_no_leave', detail: { date: '2030-01-25' } }] } });
+    const urgent = await call('POST', '/api/leave', { ...fullDay('2030-01-25'), kind: 'urgent', reason: 'x', confirm: true }, MC_A);
+    expect(urgent.body.violations[0].code).toBe('holiday_no_leave');
+    expect((await call('POST', '/api/leave', fullDay('2030-01-26'), MC_A)).status).toBe(201);
+  });
+
+  it('caps normal leave at 8 days a month for full-time staff, not counting urgent leave', async () => {
+    const days = (from: number, n: number) => ({
+      start: `2030-05-${String(from).padStart(2, '0')}T00:00:00+07:00`,
+      end: new Date(Date.parse(`2030-05-${String(from).padStart(2, '0')}T00:00:00+07:00`) + n * 86_400_000).toISOString(),
+    });
+    expect((await call('POST', '/api/leave', days(1, 5), MC_A)).status).toBe(201); // 5 days
+    expect((await call('POST', '/api/leave', days(10, 3), MC_A)).status).toBe(201); // 8 days
+    const ninth = await call('POST', '/api/leave', days(20, 1), MC_A);
+    expect(ninth).toMatchObject({ status: 422, body: { violations: [{ code: 'leave_month_cap', detail: { month: '2030-05', used: 8, max: 8 } }] } });
+    // Urgent leave is not counted, and the next month starts fresh.
+    expect((await call('POST', '/api/leave', { ...days(21, 1), kind: 'urgent', reason: 'ป่วย' }, MC_A)).status).toBe(201);
+    expect((await call('POST', '/api/leave', fullDay('2030-06-02'), MC_A)).status).toBe(201);
+    // Guests have no cap.
+    await pool.query(`UPDATE people SET employment = 'guest' WHERE id = 1`);
+    expect((await call('POST', '/api/leave', days(25, 1), MC_A)).status).toBe(201);
+  });
+
   it('lets only the admin decide, warning about sessions the person would miss', async () => {
     await published('TTS 1', '2030-01-11T10:00', '2030-01-11T12:00');
     const filed = await call('POST', '/api/leave', fullDay('2030-01-11'), MC_A);
@@ -228,6 +254,16 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const list = await call('GET', '/api/results?from=2030-03-01T00:00:00%2B07:00&to=2030-03-02T00:00:00%2B07:00');
     expect(list.body.map((r: { gmvDelta: number }) => r.gmvDelta)).toEqual([3000, 7500, 12500]);
     expect((await call('POST', '/api/results', { sessionId: s, isNewBroadcast: true, metrics: { gmv: -1 } }, 'pd.a@example.com')).status).toBe(400);
+  });
+
+  it('suggests new for the first session of the day in a room, continuing for the next', async () => {
+    const first = await published('TTS 2', '2030-03-02T10:00', '2030-03-02T12:00', 1, 3);
+    const second = await published('TTS 2', '2030-03-02T12:00', '2030-03-02T14:00', 2, 4);
+    const other = await published('TTS 3', '2030-03-02T15:00', '2030-03-02T17:00', 6, 3);
+    const flag = async (id: number) => (await call('GET', `/api/results/flag?sessionId=${id}`)).body.isNewBroadcast;
+    expect(await flag(first)).toBe(true);
+    expect(await flag(second)).toBe(false);
+    expect(await flag(other)).toBe(true); // another room
   });
 
   it('exports the month for payroll, without guests, with a freelance sheet', async () => {

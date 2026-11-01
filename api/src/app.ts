@@ -179,7 +179,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
       ? new Date(`${reading.live_started_at.replace(' ', 'T')}:00+07:00`)
       : null;
     const liveStartedAt = started && !Number.isNaN(started.getTime()) ? started : null;
-    const isNewBroadcast = await suggestNewBroadcast(pool, session.roomId, liveStartedAt, new Date());
+    const isNewBroadcast = await suggestNewBroadcast(pool, session, liveStartedAt);
     res.json({ reading, liveStartedAt, isNewBroadcast });
   });
 
@@ -189,7 +189,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     const { session } = await canRecord(pool, sessionId, req.user!);
     if (!session) return void res.status(404).json({ error: 'not_found' });
     const started = req.query.liveStartedAt ? parseDate(req.query.liveStartedAt, 'liveStartedAt') : null;
-    res.json({ isNewBroadcast: await suggestNewBroadcast(pool, session.roomId, started, new Date()) });
+    res.json({ isNewBroadcast: await suggestNewBroadcast(pool, session, started) });
   });
 
   app.post('/api/results', async (req, res) => {

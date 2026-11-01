@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { checkLeave, hasErrors, loadRules, type Leave, type Violation } from './rules/index.js';
-import { checkAgainstDb } from './sessions.js';
-import { getSession, leavesBetween, listPeople, sessionsBetween, type Db } from './store.js';
+import { checkAgainstDb, monthRange } from './sessions.js';
+import { getSession, holidaysBetween, leavesBetween, listPeople, sessionsBetween, type Db } from './store.js';
 
 /**
  * Leave and shift-swap requests. MC/PD file them for themselves (the admin may file for
@@ -24,10 +24,14 @@ async function leaveViolations(db: Db, leave: Leave): Promise<Violation[]> {
   if (leave.end <= leave.start) return [{ code: 'invalid_period', severity: 'error' }];
   const rules = await loadRules(db);
   const people = await listPeople(db);
-  const all = await leavesBetween(db, leave.start, leave.end);
+  // Whole months, for the monthly cap.
+  const from = monthRange(leave.start).from;
+  const to = monthRange(new Date(leave.end.getTime() - 1)).to;
+  const all = await leavesBetween(db, from, to);
   const leaves = leave.id === undefined ? all : all.filter((l) => l.id !== undefined && l.id < leave.id!);
   const sessions = (await sessionsBetween(db, leave.start, leave.end)).filter((s) => s.status !== 'draft');
-  return checkLeave(leave, { rules, people: new Map(people.map((p) => [p.id, p])), leaves, sessions });
+  const holidays = await holidaysBetween(db, leave.start, leave.end);
+  return checkLeave(leave, { rules, people: new Map(people.map((p) => [p.id, p])), leaves, sessions, holidays });
 }
 
 export interface LeaveInput {
