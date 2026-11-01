@@ -1,5 +1,7 @@
 import type { ViolationLike } from './i18n';
 
+export type StaffRole = 'mc' | 'pd';
+
 export interface Room {
   id: number;
   code: string;
@@ -213,6 +215,57 @@ export interface ResultInput {
   note?: string;
 }
 
+export interface Studio {
+  id: number;
+  name: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
+export interface Attendance {
+  id: number;
+  personId: number;
+  sessionId: number | null;
+  clockInAt: string;
+  clockOutAt: string | null;
+  inDistanceM: number | null;
+  inArea: boolean;
+  outDistanceM: number | null;
+  offsiteReason: string | null;
+  status: 'ok' | 'pending' | 'approved' | 'rejected';
+  adjustedHours: number | null;
+  adjustNote: string | null;
+}
+
+export interface MyAttendance {
+  session: { id: number; roomId: number; start: string; end: string; role: StaffRole; location: 'studio' | 'offsite' | 'home'; offsite: { lat: number; lng: number } | null } | null;
+  opensAt: string | null;
+  windowMinutes: number;
+  open: Attendance | null;
+  records: Attendance[];
+  studios: Studio[];
+}
+
+export type AttendanceState = 'done' | 'working' | 'forgot_out' | 'cancelled' | 'not_yet' | 'not_in' | 'missed';
+
+export interface DayAttendance {
+  rows: {
+    personId: number;
+    role: StaffRole;
+    session: { id: number; roomId: number; start: string; end: string; status: string };
+    attendance: Attendance | null;
+    lateMin: number;
+    countedHours: number;
+    state: AttendanceState;
+  }[];
+  windowMinutes: number;
+  studios: Studio[];
+}
+
+export type ClockResult = { ok: true; id: number; inArea: boolean; distanceM: number | null; status: Attendance['status'] } | { ok: false; error: string; opensAt?: string };
+type Fix = { lat: number; lng: number } | null;
+
 /** Sign-in problems: 401 not signed in, 403 signed in but not on the team list. */
 export class AuthError extends Error {
   constructor(
@@ -315,6 +368,16 @@ export const api = {
   saveResult: async (input: ResultInput) => request<{ ok: boolean; id: number; message?: string }>('POST', '/api/results', input),
   results: async (from: Date, to: Date) =>
     (await request<ResultRow[]>('GET', `/api/results?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)).data,
+  myAttendance: async () => (await request<MyAttendance>('GET', '/api/attendance/me')).data,
+  clockIn: async (at: Fix, reason?: string) => (await request<ClockResult>('POST', '/api/attendance/clock-in', { ...at, reason })).data,
+  clockOut: async (at: Fix) => (await request<ClockResult>('POST', '/api/attendance/clock-out', { ...at })).data,
+  dayAttendance: async (date: string) => (await request<DayAttendance>('GET', `/api/attendance?date=${date}`)).data,
+  decideAttendance: async (id: number, decision: 'approve' | 'reject') =>
+    (await request<{ ok: boolean }>('POST', `/api/attendance/${id}/decision`, { decision })).data,
+  adjustAttendance: async (id: number, hours: number | null, note: string) =>
+    (await request<{ ok: boolean }>('POST', `/api/attendance/${id}/adjust`, { hours, note })).data,
+  studios: async () => (await request<Studio[]>('GET', '/api/studios')).data,
+  saveStudio: async (s: Omit<Studio, 'id'> & { id?: number }) => (await request<{ ok: boolean; id: number }>('POST', '/api/studios', s)).data,
   deleteResult: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/results/${id}`)).data,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,

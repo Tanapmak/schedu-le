@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { api, METRICS, type Metric, type Person, type Reading, type ResultRow, type Room, type Session, type User } from './api';
 import { t, type Lang, type StringKey } from './i18n';
-import { addDays, bkkDate, bkkInstant, bkkTime, todayBkk } from './time';
-import { sessionLabel } from './ui';
+import { Board } from './Board';
+import { bkkDate, bkkInstant, bkkTime } from './time';
+import { Modal, sessionLabel } from './ui';
 
 interface Props {
   lang: Lang;
@@ -35,116 +36,124 @@ const fmt = (n: number | null | undefined, digits = 0) =>
   n === null || n === undefined ? '–' : n.toLocaleString('en-US', { maximumFractionDigits: digits });
 
 export function ResultsPage({ lang, user, rooms, people, aiReader }: Props) {
-  const [date, setDate] = useState(todayBkk());
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [range, setRange] = useState<{ from: Date; to: Date }>();
   const [rows, setRows] = useState<ResultRow[]>();
-  const [sessionId, setSessionId] = useState(0);
+  const [open, setOpen] = useState<Session>();
+  const isAdmin = user.role === 'admin';
 
   const load = useCallback(() => {
-    const from = bkkInstant(date, '00:00');
-    const to = bkkInstant(addDays(date, 1), '06:00'); // late lives run past midnight
-    api.board(from, to).then((b) => {
-      const isAdmin = user.role === 'admin';
-      const list = b.sessions.filter(
-        (s) => s.status !== 'draft' && bkkDate(new Date(s.start)) === date && (isAdmin || s.staff.some((x) => x.personId === user.id && !x.replaced)),
-      );
-      setSessions(list);
-      // Default to the session running now, else the latest one that has started.
-      const now = Date.now();
-      const current = list.find((s) => new Date(s.start).getTime() <= now && new Date(s.end).getTime() > now)
-        ?? [...list].reverse().find((s) => new Date(s.start).getTime() <= now) ?? list[0];
-      setSessionId((id) => (list.some((s) => s.id === id) ? id : current?.id ?? 0));
-    });
-    api.results(from, to).then(setRows, () => setRows([]));
-  }, [date, user]);
+    if (range) api.results(range.from, range.to).then(setRows, () => setRows([]));
+  }, [range?.from.getTime(), range?.to.getTime()]);
   useEffect(load, [load]);
 
-  const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
+  // Latest GMV recorded for each session, shown on its card.
+  const latest = new Map<number, ResultRow>();
+  for (const r of rows ?? []) {
+    if (r.sessionId === null) continue;
+    const prev = latest.get(r.sessionId);
+    if (!prev || prev.capturedAt < r.capturedAt) latest.set(r.sessionId, r);
+  }
+  const counts = new Map<number, number>();
+  for (const r of rows ?? []) if (r.sessionId !== null) counts.set(r.sessionId, (counts.get(r.sessionId) ?? 0) + 1);
+  const mine = (s: Session) => s.staff.some((x) => x.personId === user.id && !x.replaced);
+  const canOpen = (s: Session) => isAdmin || mine(s);
 
   return (
     <div className="page">
       <div className="page-head">
-        <h1>{t(lang, 'results')}</h1>
-        <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label={t(lang, 'date')} />
+        <div>
+          <h1>{t(lang, 'results')}</h1>
+          <p className="sub">{t(lang, 'resultsBoardHint')}</p>
+        </div>
       </div>
 
-      <section className="result-card">
-        <h2>{t(lang, 'recordResult')}</h2>
-        {sessions.length === 0 ? (
-          <p className="muted">{t(lang, 'noSessionsToday')}</p>
-        ) : (
-          <>
-            <label className="field">
-              {t(lang, 'session')}
-              <select value={sessionId} onChange={(e) => setSessionId(Number(e.target.value))}>
-                {sessions.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {sessionLabel(lang, s, rooms)} · {s.staff.filter((x) => !x.replaced).map((x) => people.find((p) => p.id === x.personId)?.nickname).join(' / ')}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {sessionId > 0 && <ResultForm key={sessionId} lang={lang} sessionId={sessionId} aiReader={aiReader} onSaved={load} />}
-          </>
-        )}
-      </section>
+      <Board
+        lang={lang}
+        rooms={rooms}
+        people={people}
+        user={user}
+        mode="results"
+        onRange={(from, to) => setRange({ from, to })}
+        onSessionOpen={(s) => (canOpen(s) ? setOpen(s) : window.alert(t(lang, 'notYourSession')))}
+        badge={(s) => {
+          const r = latest.get(s.id);
+          if (r) return `GMV ${fmt(r.gmv)} · ${counts.get(s.id)} ${t(lang, 'readingsShort')}`;
+          return new Date(s.start).getTime() <= Date.now() && canOpen(s) ? t(lang, 'noResultYet') : undefined;
+        }}
+      />
 
-      <section>
-        <h2>{t(lang, 'todaysReadings')}</h2>
-        <p className="hint">{t(lang, 'gmvNote')}</p>
-        {rows && rows.length === 0 && <p className="muted">{t(lang, 'noReadings')}</p>}
-        {rows && rows.length > 0 && (
-          <div className="table-wrap">
-            <table className="data">
-              <thead>
-                <tr>
-                  <th>{t(lang, 'time')}</th>
-                  <th>{t(lang, 'room')}</th>
-                  <th>{t(lang, 'flag')}</th>
-                  <th className="num">GMV</th>
-                  <th className="num">{t(lang, 'increase')}</th>
-                  <th className="num">{t(lang, 'm_orders')}</th>
-                  <th className="num">{t(lang, 'm_views')}</th>
-                  <th>{t(lang, 'recordedBy')}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td>{bkkTime(new Date(r.capturedAt))}</td>
-                    <td>{codeOf(r.roomId)}</td>
-                    <td>
-                      <span className={`pill ${r.isNewBroadcast ? 'status-approved' : ''}`}>{t(lang, r.isNewBroadcast ? 'flagNew' : 'flagContinue')}</span>
-                    </td>
-                    <td className="num">{fmt(r.gmv)}</td>
-                    <td className="num pos">{r.gmvDelta !== null ? `+${fmt(r.gmvDelta)}` : '–'}</td>
-                    <td className="num">{fmt(r.orders)}</td>
-                    <td className="num">{fmt(r.views)}</td>
-                    <td>
-                      {r.recordedBy}
-                      {r.source === 'ai' && <span className="tag ai-tag">AI</span>}
-                    </td>
-                    <td>
-                      {(user.role === 'admin' || r.recordedBy === user.nickname) && (
-                        <button
-                          className="link danger-link"
-                          onClick={async () => {
-                            if (window.confirm(`${t(lang, 'remove')}?`) && (await api.deleteResult(r.id)).ok) load();
-                          }}
-                        >
-                          {t(lang, 'remove')}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {open && (
+        <Modal title={`${t(lang, 'recordResult')} · ${sessionLabel(lang, open, rooms)}`} onClose={() => setOpen(undefined)} footer={null} wide>
+          <p className="muted">
+            {open.staff
+              .filter((x) => !x.replaced)
+              .map((x) => `${people.find((p) => p.id === x.personId)?.nickname} (${t(lang, x.role)})`)
+              .join(' · ')}
+          </p>
+          <ResultForm lang={lang} sessionId={open.id} aiReader={aiReader} onSaved={load} />
+          <h3>{t(lang, 'sessionReadings')}</h3>
+          <Readings lang={lang} user={user} rooms={rooms} rows={(rows ?? []).filter((r) => r.sessionId === open.id)} onChanged={load} />
+        </Modal>
+      )}
     </div>
+  );
+}
+
+function Readings({ lang, user, rooms, rows, onChanged }: { lang: Lang; user: User; rooms: Room[]; rows: ResultRow[]; onChanged: () => void }) {
+  const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
+  if (rows.length === 0) return <p className="muted">{t(lang, 'noReadings')}</p>;
+  return (
+    <>
+      <p className="hint">{t(lang, 'gmvNote')}</p>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t(lang, 'time')}</th>
+              <th>{t(lang, 'room')}</th>
+              <th>{t(lang, 'flag')}</th>
+              <th className="num">GMV</th>
+              <th className="num">{t(lang, 'increase')}</th>
+              <th className="num">{t(lang, 'm_orders')}</th>
+              <th className="num">{t(lang, 'm_views')}</th>
+              <th>{t(lang, 'recordedBy')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td>{bkkTime(new Date(r.capturedAt))}</td>
+                <td>{codeOf(r.roomId)}</td>
+                <td>
+                  <span className={`pill ${r.isNewBroadcast ? 'status-approved' : ''}`}>{t(lang, r.isNewBroadcast ? 'flagNew' : 'flagContinue')}</span>
+                </td>
+                <td className="num">{fmt(r.gmv)}</td>
+                <td className="num pos">{r.gmvDelta !== null ? `+${fmt(r.gmvDelta)}` : '–'}</td>
+                <td className="num">{fmt(r.orders)}</td>
+                <td className="num">{fmt(r.views)}</td>
+                <td>
+                  {r.recordedBy}
+                  {r.source === 'ai' && <span className="tag ai-tag">AI</span>}
+                </td>
+                <td>
+                  {(user.role === 'admin' || r.recordedBy === user.nickname) && (
+                    <button
+                      className="link danger-link"
+                      onClick={async () => {
+                        if (window.confirm(`${t(lang, 'remove')}?`) && (await api.deleteResult(r.id)).ok) onChanged();
+                      }}
+                    >
+                      {t(lang, 'remove')}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -162,12 +171,13 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [savedTick, setSavedTick] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Suggest the flag from the room's last reading, for hand-typed results too.
   useEffect(() => {
     api.suggestFlag(sessionId, fromLocalInput(liveStartedAt)).then(setIsNew, () => undefined);
-  }, [sessionId, liveStartedAt]);
+  }, [sessionId, liveStartedAt, savedTick]);
 
   async function useImage(file: Blob) {
     const url = await toDataUrl(file);
@@ -231,6 +241,7 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
       setNote('');
       setAi('idle');
       setCapturedAt(localInput(new Date()));
+      setSavedTick((n) => n + 1);
       onSaved();
     } finally {
       setBusy(false);

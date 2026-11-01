@@ -20,11 +20,11 @@ export function useBackdropClose(onClose: () => void) {
   };
 }
 
-export function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode; wide?: boolean }) {
   const backdrop = useBackdropClose(onClose);
   return (
     <div className="modal-backdrop" {...backdrop}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h2>{title}</h2>
           <button className="icon" aria-label="close" onClick={onClose}>
@@ -32,7 +32,7 @@ export function Modal({ title, onClose, children, footer }: { title: string; onC
           </button>
         </header>
         {children}
-        <footer>{footer}</footer>
+        {footer && <footer>{footer}</footer>}
       </div>
     </div>
   );
@@ -85,4 +85,27 @@ export const sessionLabel = (lang: Lang, s: SessionRef, rooms: Room[]) =>
 export function outcomeState(violations: ViolationLike[], ok: boolean): 'saved' | 'blocked' | 'confirm' {
   if (ok) return 'saved';
   return violations.some((v) => v.severity === 'error') ? 'blocked' : 'confirm';
+}
+
+/** Pill-shaped tab group (segmented control). */
+export function Tabs<K extends string>({
+  value,
+  onChange,
+  tabs,
+  className = '',
+}: {
+  value: K;
+  onChange: (k: K) => void;
+  tabs: { key: K; label: ReactNode }[];
+  className?: string;
+}) {
+  return (
+    <div className={`tabs ${className}`} role="tablist">
+      {tabs.map((tab) => (
+        <button key={tab.key} role="tab" aria-selected={tab.key === value} className={tab.key === value ? 'active' : ''} onClick={() => onChange(tab.key)}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
 }

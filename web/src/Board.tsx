@@ -312,6 +312,17 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         </div>
       )}
 
+      {data && (
+        <div className="legend">
+          <span><i />{t(lang, 'legendNormal')}</span>
+          <span><i className="mine" />{t(lang, 'legendMine')}</span>
+          {mode === 'schedule' && <span><i className="draft" />{t(lang, 'draft')}</span>}
+          <span><i className="incomplete" />{t(lang, 'noPd')}</span>
+          <span><i className="leave-approved" />{t(lang, 'needsCover')}</span>
+          <span><i className="leave-pending" />{t(lang, 'leavePendingOn')}</span>
+        </div>
+      )}
+
       {form && (
         <SessionForm
           lang={lang}
@@ -367,7 +378,7 @@ interface RowProps {
   onEmpty: (hour: number) => void;
 }
 
-const ROW_H = 48; // height of one stacked row of cards in a lane, in px
+const ROW_H = 64; // height of one stacked row of cards in a lane, in px
 
 /**
  * Puts overlapping sessions on separate rows so none hides another, e.g. a cancelled session

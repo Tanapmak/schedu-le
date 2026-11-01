@@ -5,6 +5,7 @@ import type pg from 'pg';
 import { authConfig, authenticate, requireAdmin, type AuthConfig } from './auth.js';
 import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
+import { adjustAttendance, clockIn, clockOut, dayAttendance, decideAttendance, listStudios, myAttendance, saveStudio, type Fix } from './attendance.js';
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
@@ -302,6 +303,60 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   app.delete('/api/holidays/:id', requireAdmin, async (req, res) => {
     const { rowCount } = await pool.query('DELETE FROM holidays WHERE id = $1', [parseId(req.params.id, 'id')]);
     res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
+  });
+
+  // Clock in / out. Location is the browser's GPS fix; without one, the person gives a reason.
+  const fixOf = (b: any): Fix | null => {
+    const lat = Number(b?.lat);
+    const lng = Number(b?.lng);
+    if (b?.lat == null || b?.lng == null || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return { lat, lng };
+  };
+
+  app.get('/api/attendance/me', async (req, res) => {
+    res.json(await myAttendance(pool, req.user!.id, new Date()));
+  });
+
+  app.post('/api/attendance/clock-in', async (req, res) => {
+    const out = await clockIn(pool, req.user!.id, fixOf(req.body), text(req.body.reason), new Date());
+    res.status(out.ok ? 201 : out.status).json(out);
+  });
+
+  app.post('/api/attendance/clock-out', async (req, res) => {
+    const out = await clockOut(pool, req.user!.id, fixOf(req.body), new Date());
+    res.status(out.ok ? 200 : out.status).json(out);
+  });
+
+  app.get('/api/attendance', requireAdmin, async (req, res) => {
+    const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : null;
+    if (!date) throw new BadRequest('date must be YYYY-MM-DD');
+    res.json(await dayAttendance(pool, date, new Date()));
+  });
+
+  app.post('/api/attendance/:id/decision', requireAdmin, async (req, res) => {
+    const ok = await decideAttendance(pool, parseId(req.params.id, 'id'), decisionOf(req.body.decision), req.user!.id);
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  app.post('/api/attendance/:id/adjust', requireAdmin, async (req, res) => {
+    const raw = req.body.hours;
+    const hours = raw === null || raw === '' || raw === undefined ? null : Number(raw);
+    if (hours !== null && (!Number.isFinite(hours) || hours < 0 || hours > 24)) throw new BadRequest('hours must be 0 to 24');
+    const ok = await adjustAttendance(pool, parseId(req.params.id, 'id'), hours, text(req.body.note), req.user!.id);
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  app.get('/api/studios', async (_req, res) => {
+    res.json(await listStudios(pool));
+  });
+
+  app.post('/api/studios', requireAdmin, async (req, res) => {
+    const at = fixOf(req.body);
+    const name = text(req.body.name);
+    const radiusM = Math.round(Number(req.body.radiusM ?? 100));
+    if (!at || !name || !(radiusM >= 10 && radiusM <= 5000)) throw new BadRequest('name, lat, lng and radiusM (10-5000) are required');
+    const id = await saveStudio(pool, { id: req.body.id ? parseId(req.body.id, 'id') : undefined, name, ...at, radiusM });
+    res.json({ ok: true, id });
   });
 
   app.use('/api', (_req, res) => {
