@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, type LeaveRequest, type Outcome, type Person, type Room, type SwapRequest, type User } from './api';
 import { t, type Lang, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay } from './time';
+import { RequestPreview } from './RequestPreview';
 import { Checks, periodLabel, sessionLabel, StatusPill } from './ui';
 
 interface Props {
@@ -80,6 +82,7 @@ function RequestRow({
   const [violations, setViolations] = useState<ViolationLike[]>([]);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const { item } = row;
   const ownerId = row.type === 'leave' ? row.item.personId : row.item.requesterId;
   const pending = item.status === 'pending';
@@ -154,7 +157,7 @@ function RequestRow({
   if (asRow)
     return (
       <>
-        <tr className={urgent ? 'urgent' : ''}>
+        <tr className={`clickable${urgent ? ' urgent' : ''}`} onClick={(e) => !(e.target as HTMLElement).closest('button') && setPreviewing(true)}>
           <td>
             <strong>{name}</strong>
           </td>
@@ -168,8 +171,32 @@ function RequestRow({
           <td>
             <StatusPill lang={lang} status={item.status} />
           </td>
-          <td>{actions}</td>
+          <td>
+            <div className="request-actions">
+              <button className="link" onClick={() => setPreviewing(true)}>
+                {t(lang, 'viewDetails')}
+              </button>
+              {actions}
+            </div>
+          </td>
         </tr>
+        {previewing &&
+          createPortal(
+              <RequestPreview
+                lang={lang}
+                row={row.type === 'leave' ? { type: 'leave', item: row.item } : { type: 'swap', item: row.item }}
+                people={people}
+                rooms={rooms}
+                onClose={() => setPreviewing(false)}
+                actions={
+                  <>
+                    <Checks lang={lang} violations={violations} people={people} rooms={rooms} />
+                    {actions || <button onClick={() => setPreviewing(false)}>{t(lang, 'close')}</button>}
+                  </>
+                }
+              />,
+            document.body,
+          )}
         {violations.length > 0 && (
           <tr className="checks-row">
             <td colSpan={8}>
