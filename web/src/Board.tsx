@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { api, type Board as BoardData, type Person, type Room, type Session, type User } from './api';
+import { api, type Board as BoardData, type HoursRow, type Person, type Room, type Session, type User } from './api';
 import { t, violationMessage, type Lang } from './i18n';
 import { SessionForm, type FormTarget } from './SessionForm';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk } from './time';
@@ -57,6 +57,23 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
   const [form, setForm] = useState<FormTarget>();
   const [preview, setPreview] = useState<Preview>();
   const [savingId, setSavingId] = useState<number>();
+  const showPanelOption = user.role === 'admin' && mode === 'schedule';
+  const [panelOn, setPanelOn] = useState(() => {
+    try {
+      return localStorage.getItem('summaryPanel') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const togglePanel = () =>
+    setPanelOn((on) => {
+      try {
+        localStorage.setItem('summaryPanel', on ? 'off' : 'on');
+      } catch {
+        // storage blocked; the choice lasts until reload
+      }
+      return !on;
+    });
 
   const days = useMemo(
     () => (view === 'day' ? [date] : Array.from({ length: 7 }, (_, i) => addDays(mondayOf(date), i))),
@@ -215,6 +232,10 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         </div>
         {canEdit && (
           <div className="actions">
+            <button className={`panel-toggle${panelOn ? ' on' : ''}`} aria-pressed={panelOn} onClick={togglePanel} title={t(lang, 'summaryPanel')}>
+              <span className="switch" aria-hidden="true" />
+              {t(lang, 'summaryPanel')}
+            </button>
             {drafts > 0 && (
               <span className="badge">
                 {drafts} {t(lang, 'draftCount')}
@@ -228,6 +249,8 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         )}
       </div>
 
+      <div className={`board-body${showPanelOption && panelOn ? ' with-panel' : ''}`}>
+        <div className="board-main">
       {failed && <p className="error">{t(lang, 'loadFailed')}</p>}
       {!data && !failed && <p className="muted">{t(lang, 'loading')}</p>}
 
@@ -323,6 +346,12 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         </div>
       )}
 
+        </div>
+        {showPanelOption && panelOn && data && (
+          <SummaryPanel lang={lang} date={date} days={days} sessions={visible} leaves={leaves} rooms={rooms} nameOf={nameOf} />
+        )}
+      </div>
+
       {form && (
         <SessionForm
           lang={lang}
@@ -337,6 +366,125 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         />
       )}
     </section>
+  );
+}
+
+/** Admin's side panel: what needs handling for the days on screen, who is on leave, hours vs cap this month. */
+function SummaryPanel({
+  lang,
+  date,
+  days,
+  sessions,
+  leaves,
+  rooms,
+  nameOf,
+}: {
+  lang: Lang;
+  date: string;
+  days: string[];
+  sessions: Session[];
+  leaves: BoardData['leaves'];
+  rooms: Room[];
+  nameOf: (id: number) => string;
+}) {
+  const [pending, setPending] = useState<number>();
+  const [hours, setHours] = useState<HoursRow[]>();
+  const month = date.slice(0, 7);
+  useEffect(() => {
+    void Promise.all([api.leave({ status: 'pending' }), api.swaps({ status: 'pending' })]).then(([l, s]) => setPending(l.length + s.length), () => undefined);
+  }, [leaves]);
+  useEffect(() => {
+    void api.hours(month).then(setHours, () => setHours([]));
+  }, [month, sessions]);
+
+  const live = sessions.filter((s) => s.status !== 'cancelled');
+  const needCover = live.filter((s) => leaveHit(s, leaves)?.status === 'approved').length;
+  const noPd = live.filter((s) => {
+    const room = rooms.find((r) => r.id === s.roomId);
+    return room?.roomType === 'live' && room.requiresPd && !s.staff.some((x) => x.role === 'pd' && !x.replaced);
+  }).length;
+  const drafts = sessions.filter((s) => s.status === 'draft').length;
+  const from = bkkInstant(days[0], '00:00');
+  const to = bkkInstant(addDays(days[days.length - 1], 1), '00:00');
+  const onLeave = leaves.filter((l) => new Date(l.start) < to && new Date(l.end) > from);
+  const team = (hours ?? []).filter((h) => h.employment === 'full_time' && h.maxHours !== null);
+  const scope =
+    days.length === 1
+      ? date === todayBkk()
+        ? t(lang, 'today')
+        : formatDay(date, lang, { day: 'numeric', month: 'short' })
+      : `${formatDay(days[0], lang, { day: 'numeric', month: 'short' })} – ${formatDay(days[days.length - 1], lang, { day: 'numeric', month: 'short' })}`;
+
+  return (
+    <aside className="summary-panel">
+      <section className="sp-card gray">
+        <h3>
+          {t(lang, 'toHandle')} · {scope}
+        </h3>
+        <dl>
+          <div className={needCover ? 'hot' : ''}>
+            <dt>{t(lang, 'needsCover')}</dt>
+            <dd>{needCover}</dd>
+          </div>
+          <div className={noPd ? 'hot' : ''}>
+            <dt>{t(lang, 'sessionsNoPd')}</dt>
+            <dd>{noPd}</dd>
+          </div>
+          <div>
+            <dt>{t(lang, 'draftCount')}</dt>
+            <dd>{drafts}</dd>
+          </div>
+          <div className={pending ? 'hot' : ''}>
+            <dt>{t(lang, 'pendingRequests')}</dt>
+            <dd>{pending ?? '…'}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="sp-card">
+        <h3>
+          {t(lang, 'whoOnLeave')} · {scope}
+        </h3>
+        {onLeave.length === 0 ? (
+          <p className="muted">{t(lang, 'nobodyOnLeave')}</p>
+        ) : (
+          <ul>
+            {onLeave.map((l, i) => (
+              <li key={i}>
+                {nameOf(l.personId)} · {t(lang, l.kind === 'urgent' ? 'leaveUrgent' : 'leaveNormal')}
+                {days.length > 1 && ` · ${formatDay(bkkDate(new Date(l.start)), lang, { weekday: 'short', day: 'numeric' })}`}{' '}
+                <span className={`pill status-${l.status}`}>{t(lang, l.status === 'approved' ? 'statusApproved' : 'statusPending')}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="sp-card">
+        <h3>{t(lang, 'hoursThisMonth')}</h3>
+        <p className="hint">{t(lang, 'hoursVsCap')}</p>
+        {hours === undefined && <p className="muted">{t(lang, 'loading')}</p>}
+        <ul className="sp-hours">
+          {team.map((h) => {
+            const near = h.totalHours >= h.maxHours! - 8;
+            return (
+              <li key={h.personId} className={near ? 'near' : ''}>
+                <div>
+                  <span>{h.nickname}</span>
+                  <span>
+                    {h.totalHours} / {h.maxHours}
+                  </span>
+                </div>
+                <div className="kpi-bar">
+                  <span style={{ width: `${Math.min(100, (h.totalHours / h.maxHours!) * 100)}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="hint">{t(lang, 'nearCapNote')}</p>
+      </section>
+    </aside>
   );
 }
 

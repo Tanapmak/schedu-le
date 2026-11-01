@@ -24,6 +24,8 @@ export interface HoursRow {
   cancelledCountedHours: number;
   sessions: number;
   kpiHours: number | null;
+  /** Monthly cap on scheduled hours (person override, else the rule for their position); null for operation. */
+  maxHours: number | null;
   ownRoleHours: number;
   crossRoleHours: number;
   /** ownRoleHours − kpiHours (negative = short of KPI); null when there is no KPI. */
@@ -78,6 +80,7 @@ export async function hoursReport(db: Db, month: string, now = new Date()): Prom
       cancelledCountedHours: round(a?.cancelled ?? 0),
       sessions: a?.n ?? 0,
       kpiHours: kpi,
+      maxHours: ownRole ? (p.maxHours != null ? Number(p.maxHours) : rules.maxHours[ownRole]) : null,
       ownRoleHours: round(own),
       crossRoleHours: round(cross),
       vsKpi: kpi === null ? null : round(own - kpi),

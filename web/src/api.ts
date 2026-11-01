@@ -142,6 +142,7 @@ export interface HoursRow {
   cancelledCountedHours: number;
   sessions: number;
   kpiHours: number | null;
+  maxHours: number | null;
   ownRoleHours: number;
   crossRoleHours: number;
   vsKpi: number | null;
