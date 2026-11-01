@@ -1,12 +1,30 @@
-import type { ReactNode } from 'react';
+import { useRef, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import type { Person, RequestStatus, Room, SessionRef } from './api';
 import { t, violationMessage, type Lang, type StringKey, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay } from './time';
 
+/**
+ * Closes a modal on a click on its backdrop, but only when the press also started there.
+ * Selecting text in a field and letting go outside the box must not close the form.
+ */
+export function useBackdropClose(onClose: () => void) {
+  const pressedOnBackdrop = useRef(false);
+  return {
+    onPointerDown: (e: PointerEvent) => {
+      pressedOnBackdrop.current = e.target === e.currentTarget;
+    },
+    onClick: (e: MouseEvent) => {
+      if (pressedOnBackdrop.current && e.target === e.currentTarget) onClose();
+      pressedOnBackdrop.current = false;
+    },
+  };
+}
+
 export function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+  const backdrop = useBackdropClose(onClose);
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" {...backdrop}>
+      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h2>{title}</h2>
           <button className="icon" aria-label="close" onClick={onClose}>

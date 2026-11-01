@@ -100,6 +100,25 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect((await call('GET', '/api/leave')).body).toHaveLength(4);
   });
 
+  it('approves every request on a day where an urgent one went over the quota', async () => {
+    const a = (await call('POST', '/api/leave', fullDay('2030-01-20'), MC_A)).body.id;
+    const b = (await call('POST', '/api/leave', fullDay('2030-01-20'), MC_B)).body.id;
+    const urgent = { ...fullDay('2030-01-20'), kind: 'urgent', reason: 'ไม่สบาย', confirm: true };
+    const c = (await call('POST', '/api/leave', urgent, MC_C)).body.id;
+
+    // The two normal requests were within the quota when filed, so they approve cleanly.
+    expect(await call('POST', `/api/leave/${a}/decision`, { decision: 'approve' })).toMatchObject({ status: 200, body: { violations: [] } });
+    expect((await call('POST', `/api/leave/${b}/decision`, { decision: 'approve' })).status).toBe(200);
+    // The urgent one is over the quota: a warning to confirm, never a block.
+    const first = await call('POST', `/api/leave/${c}/decision`, { decision: 'approve' });
+    expect(first).toMatchObject({ status: 409, body: { violations: [{ code: 'leave_quota_full', severity: 'warning' }] } });
+    expect((await call('POST', `/api/leave/${c}/decision`, { decision: 'approve', confirm: true })).status).toBe(200);
+
+    // A fourth, normal request on that day is still refused.
+    await pool.query(`INSERT INTO people (nickname, position, email, app_role) VALUES ('MC D', 'mc', 'mc.d@example.com', 'mc')`);
+    expect((await call('POST', '/api/leave', fullDay('2030-01-20'), 'mc.d@example.com')).body.violations[0].code).toBe('leave_quota_full');
+  });
+
   it('lets only the admin decide, warning about sessions the person would miss', async () => {
     await published('TTS 1', '2030-01-11T10:00', '2030-01-11T12:00');
     const filed = await call('POST', '/api/leave', fullDay('2030-01-11'), MC_A);

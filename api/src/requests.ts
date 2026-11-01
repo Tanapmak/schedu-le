@@ -15,12 +15,17 @@ export type Outcome =
 
 const fail = (status: 403 | 404 | 409 | 422, code: string): Outcome => ({ ok: false, status, violations: [{ code, severity: 'error' }] });
 
-/** Same check as filing; also used when the admin approves, since others may have filed since. */
+/**
+ * Same check as filing. When the admin approves, the quota is judged first come, first
+ * served: only requests filed before this one count against it. So two normal requests
+ * filed first can still be approved after an urgent third one went over the quota.
+ */
 async function leaveViolations(db: Db, leave: Leave): Promise<Violation[]> {
   if (leave.end <= leave.start) return [{ code: 'invalid_period', severity: 'error' }];
   const rules = await loadRules(db);
   const people = await listPeople(db);
-  const leaves = await leavesBetween(db, leave.start, leave.end);
+  const all = await leavesBetween(db, leave.start, leave.end);
+  const leaves = leave.id === undefined ? all : all.filter((l) => l.id !== undefined && l.id < leave.id!);
   const sessions = (await sessionsBetween(db, leave.start, leave.end)).filter((s) => s.status !== 'draft');
   return checkLeave(leave, { rules, people: new Map(people.map((p) => [p.id, p])), leaves, sessions });
 }
