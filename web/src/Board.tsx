@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { api, type Board as BoardData, type HoursRow, type Person, type Room, type Session, type User } from './api';
 import { t, violationMessage, type Lang } from './i18n';
+import { MonthView, addMonths, monthGrid } from './MonthView';
 import { SessionForm, type FormTarget } from './SessionForm';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk } from './time';
 
-type View = 'day' | 'week';
+type View = 'day' | 'week' | 'month';
 
 // Day view spans 08:00 to 02:00 the next morning; late lives run past midnight.
 const DAY_START_H = 8;
@@ -76,7 +77,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
     });
 
   const days = useMemo(
-    () => (view === 'day' ? [date] : Array.from({ length: 7 }, (_, i) => addDays(mondayOf(date), i))),
+    () => (view === 'day' ? [date] : view === 'week' ? Array.from({ length: 7 }, (_, i) => addDays(mondayOf(date), i)) : monthGrid(date)),
     [view, date],
   );
   const from = bkkInstant(days[0], '00:00');
@@ -114,8 +115,11 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
   }
 
   const step = view === 'day' ? 1 : 7;
+  const shift = (dir: 1 | -1) => setDate(view === 'month' ? addMonths(date, dir) : addDays(date, dir * step));
   const title =
-    view === 'day'
+    view === 'month'
+      ? formatDay(date, lang, { month: 'long', year: 'numeric' })
+      : view === 'day'
       ? formatDay(date, lang, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
       : `${formatDay(days[0], lang, { day: 'numeric', month: 'short' })} – ${formatDay(days[6], lang, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
@@ -218,13 +222,13 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
     <section className="board">
       <div className="toolbar">
         <div className="nav">
-          <button aria-label="previous" onClick={() => setDate(addDays(date, -step))}>‹</button>
+          <button aria-label="previous" onClick={() => shift(-1)}>‹</button>
           <strong>{title}</strong>
-          <button aria-label="next" onClick={() => setDate(addDays(date, step))}>›</button>
+          <button aria-label="next" onClick={() => shift(1)}>›</button>
           <button onClick={() => setDate(todayBkk())}>{t(lang, 'today')}</button>
         </div>
         <div className="segmented" role="group">
-          {(['day', 'week'] as const).map((v) => (
+          {(['day', 'week', 'month'] as const).map((v) => (
             <button key={v} className={v === view ? 'active' : ''} onClick={() => setView(v)}>
               {t(lang, v)}
             </button>
@@ -249,7 +253,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         )}
       </div>
 
-      <div className={`board-body${showPanelOption && panelOn ? ' with-panel' : ''}`}>
+      <div className={`board-body${showPanelOption && panelOn && view !== 'month' ? ' with-panel' : ''}`}>
         <div className="board-main">
       {failed && <p className="error">{t(lang, 'loadFailed')}</p>}
       {!data && !failed && <p className="muted">{t(lang, 'loading')}</p>}
@@ -287,6 +291,20 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
             ))}
           </div>
         </>
+      )}
+
+      {data && view === 'month' && (
+        <MonthView
+          lang={lang}
+          month={date.slice(0, 7)}
+          days={days}
+          rooms={shown}
+          data={{ ...data, sessions: visible }}
+          nameOf={nameOf}
+          selected={date}
+          onSelect={setDate}
+          onOpenDay={(d) => (setDate(d), setView('day'))}
+        />
       )}
 
       {data && view === 'week' && (
@@ -335,7 +353,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
         </div>
       )}
 
-      {data && (
+      {data && view !== 'month' && (
         <div className="legend">
           <span><i />{t(lang, 'legendNormal')}</span>
           <span><i className="mine" />{t(lang, 'legendMine')}</span>
@@ -347,7 +365,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
       )}
 
         </div>
-        {showPanelOption && panelOn && data && (
+        {showPanelOption && panelOn && data && view !== 'month' && (
           <SummaryPanel lang={lang} date={date} days={days} sessions={visible} leaves={leaves} rooms={rooms} nameOf={nameOf} />
         )}
       </div>
