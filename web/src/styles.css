@@ -445,3 +445,4 @@ table.data.requests tr.clickable:hover td { background: #fafafa; }
 .pv-day.full small:first-of-type { color: var(--scarlet); font-weight: 600; }
 .modal footer .checks { flex: 1; margin: 0; }
 @media (max-width: 640px) { .pv-pair { grid-template-columns: 1fr; } .pv-arrow { transform: rotate(90deg); } }
+input[type='date'], input[type='time'], input[type='datetime-local'], input[type='month'] { cursor: pointer; }
