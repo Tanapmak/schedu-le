@@ -220,3 +220,12 @@ main:has(.table-wrap) { max-width: 1100px; }
 .page .hint, section > .hint { align-self: auto; }
 .my-day h3 { display: flex; gap: 8px; align-items: center; }
 .form-grid label.inline { flex-direction: row; align-items: center; color: var(--ink); }
+/* Sessions hit by leave: approved = must change MC/PD, pending = heads-up */
+.chip.leave-approved { background: var(--red); border-color: var(--red); color: #fff; }
+.chip.draft.leave-approved { background: #fdecec; color: var(--red); border: 1px dashed var(--red); }
+.chip.leave-pending { box-shadow: inset 0 0 0 2px #e8a400; }
+.chip .leave-flag { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.chip.leave-pending .leave-flag { color: #e8a400; }
+.chip .badge-line { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.block-pos.openable { cursor: pointer; }
+.block-pos.openable:hover .chip { outline: 2px solid var(--red); outline-offset: 1px; }

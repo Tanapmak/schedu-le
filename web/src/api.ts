@@ -302,6 +302,8 @@ export const api = {
   decideSwap: async (id: number, decision: 'approve' | 'reject', confirm = false) =>
     (await request<Outcome>('POST', `/api/swaps/${id}/decision`, { decision, confirm })).data,
   withdrawSwap: async (id: number) => (await request<{ ok: boolean }>('POST', `/api/swaps/${id}/withdraw`, {})).data,
+  holidays: async (from: Date, to: Date) =>
+    (await request<Holiday[]>('GET', `/api/holidays?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)).data,
   addHoliday: async (name: string, start: string, end: string) =>
     (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
   removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,

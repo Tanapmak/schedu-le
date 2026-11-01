@@ -26,11 +26,30 @@ interface Props {
   rooms: Room[];
   people: Person[];
   user: User;
+  /** 'results': read-only board where a click on a session opens `onSessionOpen` (live results). */
+  mode?: 'schedule' | 'results';
+  onSessionOpen?: (s: Session) => void;
+  /** Extra line on a card, e.g. GMV recorded so far. */
+  badge?: (s: Session) => string | undefined;
+  /** Called with the range on screen whenever it changes. */
+  onRange?: (from: Date, to: Date) => void;
 }
 
-export function Board({ lang, rooms, people, user }: Props) {
+/** How a session is hit by leave: someone working it has approved (or pending) leave over it. */
+export type LeaveHit = { status: 'approved' | 'pending'; personIds: number[] };
+
+export function leaveHit(s: Session, leaves: BoardData['leaves']): LeaveHit | undefined {
+  if (s.status === 'cancelled') return undefined;
+  const hits = leaves.filter(
+    (l) => s.staff.some((x) => x.personId === l.personId && !x.replaced) && new Date(l.start) < new Date(s.end) && new Date(l.end) > new Date(s.start),
+  );
+  if (hits.length === 0) return undefined;
+  return { status: hits.some((l) => l.status === 'approved') ? 'approved' : 'pending', personIds: [...new Set(hits.map((l) => l.personId))] };
+}
+
+export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionOpen, badge, onRange }: Props) {
   // Only the admin edits; MC and PD see the published schedule with their own sessions marked.
-  const canEdit = user.role === 'admin';
+  const canEdit = user.role === 'admin' && mode === 'schedule';
   const [view, setView] = useState<View>('day');
   const [date, setDate] = useState(todayBkk());
   const [data, setData] = useState<BoardData>();
@@ -51,6 +70,7 @@ export function Board({ lang, rooms, people, user }: Props) {
     api.board(from, to).then(setData, () => setFailed(true));
   }, [from.getTime(), to.getTime()]);
   useEffect(load, [load]);
+  useEffect(() => onRange?.(from, to), [from.getTime(), to.getTime()]);
 
   // After a save, offer to join the session with a back-to-back one that has the same people.
   async function afterSave(id?: number) {
@@ -167,7 +187,11 @@ export function Board({ lang, rooms, people, user }: Props) {
   }
 
   // Sessions as they should look right now, with the one being dragged at its new place.
-  const placed = (data?.sessions ?? []).map((x) =>
+  // Recording results only concerns sessions that are published (or cancelled, shown for the record).
+  const visible = (data?.sessions ?? []).filter((x) => mode === 'schedule' || x.status !== 'draft');
+  const leaves = data?.leaves ?? [];
+  const cardExtras = (x: Session) => ({ hit: leaveHit(x, leaves), badge: badge?.(x) });
+  const placed = visible.map((x) =>
     preview && x.id === preview.id
       ? { ...x, roomId: preview.roomId, start: preview.start.toISOString(), end: preview.end.toISOString() }
       : x,
@@ -229,6 +253,8 @@ export function Board({ lang, rooms, people, user }: Props) {
                 meId={user.id}
                 canEdit={canEdit}
                 nameOf={nameOf}
+                extras={cardExtras}
+                onOpen={onSessionOpen}
                 onDragStart={startDrag}
                 onEmpty={(hour) =>
                   canEdit &&
@@ -261,7 +287,7 @@ export function Board({ lang, rooms, people, user }: Props) {
                 <tr key={room.id}>
                   <th scope="row">{room.code}</th>
                   {days.map((d) => {
-                    const list = data.sessions.filter((s) => s.roomId === room.id && bkkDate(new Date(s.start)) === d);
+                    const list = visible.filter((s) => s.roomId === room.id && bkkDate(new Date(s.start)) === d);
                     return (
                       <td key={d} onClick={() => canEdit && setForm({ mode: 'new', roomId: room.id, date: d, start: '10:00', end: '12:00' })}>
                         {list.map((s) => (
@@ -272,7 +298,8 @@ export function Board({ lang, rooms, people, user }: Props) {
                             room={room}
                             meId={user.id}
                             nameOf={nameOf}
-                            onOpen={canEdit ? () => setForm({ mode: 'edit', session: s }) : undefined}
+                            {...cardExtras(s)}
+                            onOpen={canEdit ? () => setForm({ mode: 'edit', session: s }) : onSessionOpen && s.status !== 'cancelled' ? () => onSessionOpen(s) : undefined}
                           />
                         ))}
                       </td>
@@ -334,6 +361,8 @@ interface RowProps {
   savingId?: number;
   meId: number;
   canEdit: boolean;
+  extras: (s: Session) => { hit?: LeaveHit; badge?: string };
+  onOpen?: (s: Session) => void;
   onDragStart: (e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) => void;
   onEmpty: (hour: number) => void;
 }
@@ -360,7 +389,7 @@ function stackRows(sessions: Session[], draggingId?: number): { rowOf: Map<numbe
   return { rowOf, rows: Math.max(taken.length, 1) };
 }
 
-function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdit, nameOf, onDragStart, onEmpty }: RowProps) {
+function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdit, nameOf, extras, onOpen, onDragStart, onEmpty }: RowProps) {
   const { rowOf, rows } = stackRows(sessions, draggingId);
   return (
     <>
@@ -385,7 +414,7 @@ function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdi
           return (
             <div
               key={s.id}
-              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.id === savingId ? ' saving' : ''}${s.status === 'cancelled' ? ' cancelled' : canEdit ? ' draggable' : ''}`}
+              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.id === savingId ? ' saving' : ''}${s.status === 'cancelled' ? ' cancelled' : canEdit ? ' draggable' : onOpen ? ' openable' : ''}`}
               style={{
                 left: `${(startMin / SPAN_MIN) * 100}%`,
                 width: `${((endMin - startMin) / SPAN_MIN) * 100}%`,
@@ -393,9 +422,12 @@ function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdi
                 height: ROW_H - 4,
               }}
               onPointerDown={(e) => onDragStart(e, s, 'move')}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!canEdit && onOpen && s.status !== 'cancelled') onOpen(s);
+              }}
             >
-              <SessionChip lang={lang} session={s} room={room} meId={meId} nameOf={nameOf} />
+              <SessionChip lang={lang} session={s} room={room} meId={meId} nameOf={nameOf} {...extras(s)} />
               {canEdit && s.status !== 'cancelled' && (
                 <span className="resize" aria-hidden="true" onPointerDown={(e) => onDragStart(e, s, 'resize')} />
               )}
@@ -414,18 +446,21 @@ interface ChipProps {
   meId: number;
   nameOf: (id: number) => string;
   onOpen?: () => void; // day view opens through the drag handler instead
+  hit?: LeaveHit;
+  badge?: string;
 }
 
-function SessionChip({ lang, session: s, room, meId, nameOf, onOpen }: ChipProps) {
+function SessionChip({ lang, session: s, room, meId, nameOf, onOpen, hit, badge }: ChipProps) {
   const working = s.staff.filter((x) => !x.replaced);
   const missingPd = room.roomType === 'live' && room.requiresPd && !working.some((x) => x.role === 'pd');
   const names = working.map((x) => nameOf(x.personId)).join(' · ');
   const mine = working.some((x) => x.personId === meId);
-  const cls = ['chip', s.status, missingPd && s.status !== 'cancelled' ? 'incomplete' : '', mine ? 'mine' : ''].join(' ');
+  const cls = ['chip', s.status, missingPd && s.status !== 'cancelled' ? 'incomplete' : '', mine ? 'mine' : '', hit ? `leave-${hit.status}` : '', badge ? 'has-badge' : ''].join(' ');
+  const onLeave = hit?.personIds.map(nameOf).join(', ');
   return (
     <button
       className={cls}
-      title={s.note ?? undefined}
+      title={[onLeave && `${t(lang, hit!.status === 'approved' ? 'needsCover' : 'leavePendingOn')}: ${onLeave}`, s.note].filter(Boolean).join('\n') || undefined}
       onClick={(e) => {
         e.stopPropagation();
         onOpen?.();
@@ -438,6 +473,12 @@ function SessionChip({ lang, session: s, room, meId, nameOf, onOpen }: ChipProps
         {s.status === 'cancelled' && ` · ${t(lang, 'cancelled')}`}
         {missingPd && s.status !== 'cancelled' && ` · ${t(lang, 'noPd')}`}
       </span>
+      {hit && (
+        <span className="leave-flag">
+          {t(lang, hit.status === 'approved' ? 'needsCover' : 'leavePendingOn')}: {onLeave}
+        </span>
+      )}
+      {badge && <span className="badge-line">{badge}</span>}
     </button>
   );
 }

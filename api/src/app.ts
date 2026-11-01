@@ -278,6 +278,13 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   });
 
   // ---- Team off days (holidays). They block sessions; existing sessions on the day are reported back.
+  app.get('/api/holidays', async (req, res) => {
+    const from = parseDate(req.query.from, 'from');
+    const to = parseDate(req.query.to, 'to');
+    if (to <= from || to.getTime() - from.getTime() > 400 * 86_400_000) throw new BadRequest('bad range');
+    res.json(await holidaysBetween(pool, from, to));
+  });
+
   app.post('/api/holidays', requireAdmin, async (req, res) => {
     const name = text(req.body.name);
     if (!name) throw new BadRequest('name is required');

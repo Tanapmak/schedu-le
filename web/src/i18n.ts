@@ -213,6 +213,22 @@ const strings = {
     en: 'Three sheets: Summary (hours/KPI/GMV per person), Sessions (every live), Freelance (each freelancer’s lives with totals). No pay rates; guests left out.',
     zh: '三个工作表：Summary（每人工时/KPI/GMV）、Sessions（所有场次）、Freelance（自由职业者场次及合计）。不含工资标准，不含嘉宾。',
   },
+
+  needsCover: { th: 'ลา ต้องหาคนแทน', en: 'On leave, needs cover', zh: '请假，需替班' },
+  leavePendingOn: { th: 'ลารออนุมัติ', en: 'Leave pending', zh: '请假待批' },
+
+  offDays: { th: 'วันหยุดทีม', en: 'Off days', zh: '休息日' },
+  offDayLeaveWarn: {
+    th: '{date} เป็นวันหยุดทีม ({name}) วันนั้นหยุดอยู่แล้ว ไม่ต้องยื่นลา',
+    en: '{date} is a team off day ({name}). Everyone is off already; no need to request leave.',
+    zh: '{date} 是团队休息日（{name}），当天本就休息，无需请假。',
+  },
+  tabPending: { th: 'รออนุมัติ', en: 'Pending', zh: '待批准' },
+  tabApproved: { th: 'อนุมัติแล้ว', en: 'Approved', zh: '已批准' },
+  tabAll: { th: 'ทั้งหมด', en: 'All', zh: '全部' },
+  upcomingOffDays: { th: 'วันหยุดที่จะถึง', en: 'Upcoming off days', zh: '即将到来的休息日' },
+  pastOffDays: { th: 'ที่ผ่านมา', en: 'Past', zh: '已过' },
+  noOffDays: { th: 'ยังไม่มีวันหยุดทีม', en: 'No off days yet', zh: '暂无休息日' },
 } satisfies Record<string, Record<Lang, string>>;
 
 /** Messages for rule violation codes from the API. */
@@ -245,6 +261,16 @@ const violationText: Record<string, Record<Lang, string>> = {
   not_your_session: { th: 'ไม่ใช่รอบของคุณ', en: 'Not your session', zh: '不是你的场次' },
   target_already_in_session: { th: 'คนนี้อยู่ในรอบนั้นแล้ว', en: 'That person is already in the session', zh: '此人已在该场次中' },
   target_not_in_session: { th: 'คนนี้ไม่ได้อยู่ในรอบที่เลือก', en: 'That person is not in the chosen session', zh: '此人不在所选场次中' },
+  holiday_no_leave: {
+    th: '{date} เป็นวันหยุดทีม ({name}) หยุดอยู่แล้ว ไม่ต้องยื่นลา',
+    en: '{date} is a team off day ({name}); no leave needed',
+    zh: '{date} 是团队休息日（{name}），无需请假',
+  },
+  leave_month_cap: {
+    th: 'เดือน {month} ลาปกติไปแล้ว {used} วัน ลาได้ไม่เกิน {max} วัน/เดือน (ลาด่วนไม่นับ)',
+    en: 'Already {used} normal leave days in {month}; the limit is {max} a month (urgent leave not counted)',
+    zh: '{month} 已普通请假 {used} 天，每月上限 {max} 天（紧急请假不计）',
+  },
   not_found: { th: 'ไม่พบรอบนี้', en: 'Session not found', zh: '找不到该场次' },
 };
 

@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { api, type Person, type Room, type User } from './api';
+import { useEffect, useState } from 'react';
+import { api, type Holiday, type Person, type Room, type User } from './api';
 import { t, type Lang, type ViolationLike } from './i18n';
-import { addDays, bkkInstant, todayBkk } from './time';
+import { addDays, bkkDate, bkkInstant, formatDay, todayBkk } from './time';
 import { Checks, Modal, outcomeState } from './ui';
 
 interface Props {
@@ -30,7 +30,13 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
   // Whole days are [from 00:00, day after `to` 00:00); a part day stays on one date.
   const start = allDay ? bkkInstant(from, '00:00') : bkkInstant(from, startTime);
   const end = allDay ? bkkInstant(addDays(to < from ? from : to, 1), '00:00') : bkkInstant(from, endTime);
-  const valid = end > start && (kind === 'normal' || reason.trim() !== '');
+  // Team off days: warn straight away, the team is off anyway.
+  const [offDays, setOffDays] = useState<Holiday[]>([]);
+  useEffect(() => {
+    if (end <= start) return setOffDays([]);
+    api.holidays(start, end).then(setOffDays, () => setOffDays([]));
+  }, [start.getTime(), end.getTime()]);
+  const valid = end > start && (kind === 'normal' || reason.trim() !== '') && offDays.length === 0;
 
   const reset = () => {
     setViolations([]);
@@ -119,6 +125,18 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
           <input value={reason} onChange={(e) => (setReason(e.target.value), reset())} />
         </label>
       </div>
+      {offDays.length > 0 && (
+        <ul className="checks">
+          {offDays.map((h) => (
+            <li key={h.id} className="error">
+              ✕{' '}
+              {t(lang, 'offDayLeaveWarn')
+                .replace('{date}', formatDay(bkkDate(new Date(h.start)), lang, { weekday: 'short', day: 'numeric', month: 'short' }))
+                .replace('{name}', h.name)}
+            </li>
+          ))}
+        </ul>
+      )}
       <Checks lang={lang} violations={violations} people={people} rooms={rooms} />
     </Modal>
   );
