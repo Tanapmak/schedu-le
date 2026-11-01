@@ -41,7 +41,7 @@ export function OffDaysPage({ lang }: { lang: Lang }) {
   const past = (holidays ?? []).filter((h) => new Date(h.end).getTime() <= now).reverse();
 
   return (
-    <div className="page">
+    <div className="page fill">
       <div className="page-head">
         <div>
           <h1>{t(lang, 'teamOffDays')}</h1>
@@ -68,14 +68,14 @@ export function OffDaysPage({ lang }: { lang: Lang }) {
         {notice && <p className="warning-text">{notice}</p>}
       </section>
 
-      <section>
+      <section className="grow">
         <h2>{t(lang, 'upcomingOffDays')}</h2>
         {holidays && upcoming.length === 0 && <p className="muted">{t(lang, 'noOffDays')}</p>}
         {upcoming.length > 0 && <OffDayTable lang={lang} rows={upcoming} onRemove={remove} />}
       </section>
 
       {past.length > 0 && (
-        <section>
+        <section className="grow">
           <h2>{t(lang, 'pastOffDays')}</h2>
           <OffDayTable lang={lang} rows={past} past />
         </section>

@@ -30,7 +30,7 @@ export function AttendancePage({ lang, people, rooms }: { lang: Lang; people: Pe
   }
 
   return (
-    <div className="page">
+    <div className="page fill">
       <div className="page-head">
         <div>
           <h1>

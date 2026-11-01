@@ -458,3 +458,15 @@ table.data.past td { color: var(--gray-dark); }
   .table-cards td .request-actions { justify-content: flex-start !important; margin-top: 6px; }
   .table-cards tr.checks-row { background: none; padding: 0; }
 }
+/* List pages on a computer: header, controls and table head stay put; only the rows scroll */
+table.data thead th { position: sticky; top: 0; z-index: 1; }
+@media (min-width: 721px) {
+  main:has(> .page.fill) { height: calc(100dvh - 61px); overflow: hidden; display: flex; flex-direction: column; padding-bottom: 16px; }
+  main > .page.fill { flex: 1; min-height: 0; }
+  .page.fill > * { flex: none; }
+  .page.fill > .table-wrap, .page.fill > section.grow { flex: 0 1 auto; min-height: 0; }
+  .page.fill > section.grow { display: flex; flex-direction: column; }
+  .page.fill > section.grow > * { flex: none; }
+  .page.fill > section.grow > .table-wrap { flex: 0 1 auto; min-height: 80px; }
+  .page.fill .table-wrap { overflow: auto; }
+}

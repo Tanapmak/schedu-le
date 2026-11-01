@@ -55,7 +55,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
   const pos = (r: HoursRow) => (r.position === 'operation' ? 'OP' : r.position.toUpperCase());
 
   return (
-    <div className="page">
+    <div className="page fill">
       <div className="page-head">
         <h1>{t(lang, 'hours')}</h1>
         <div className="inline-form">
@@ -72,7 +72,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
       {!rows && !failed && <p className="muted">{t(lang, 'loading')}</p>}
 
       {kpiRows.length > 0 && (
-        <section>
+        <section className="grow">
           <h2>{t(lang, 'kpiStaff')}</h2>
           <div className="table-wrap">
             <table className="data">
@@ -113,7 +113,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
       )}
 
       {otherRows.length > 0 && (
-        <section>
+        <section className="grow">
           <h2>{t(lang, 'noKpiStaff')}</h2>
           <div className="table-wrap">
             <table className="data">

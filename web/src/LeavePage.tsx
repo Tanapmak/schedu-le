@@ -72,7 +72,7 @@ export function LeavePage({ lang, user, people, rooms }: Props) {
   const quota = (n: number) => (n >= 2 ? ' full' : '');
 
   return (
-    <div className="page">
+    <div className="page fill">
       <div className="page-head">
         <div>
           <h1>{t(lang, 'leave')}</h1>
