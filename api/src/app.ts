@@ -8,6 +8,7 @@ import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
 import { adjustAttendance, clockIn, clockOut, dayAttendance, decideAttendance, listStudios, myAttendance, saveStudio, type Fix } from './attendance.js';
 import { correctableSessions, decideCorrection, listCorrections, requestCorrection, withdrawCorrection } from './corrections.js';
+import { copyRows, importRows, importTemplate, readSheet, saveDrafts } from './bulk.js';
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
@@ -150,6 +151,53 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     const id = parseId(req.params.id, 'id');
     const { rowCount } = await pool.query(`DELETE FROM sessions WHERE id = $1 AND status = 'draft'`, [id]);
     res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
+  });
+
+  // Copy a week (or any range) of lives onto other days as drafts, matching weekdays.
+  const isoDate = (v: unknown, name: string) => {
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new BadRequest(`${name} must be YYYY-MM-DD`);
+    return v;
+  };
+  const spanDays = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000 + 1;
+
+  app.post('/api/sessions/copy', requireManager, async (req, res) => {
+    const range = {
+      sourceFrom: isoDate(req.body.sourceFrom, 'sourceFrom'),
+      sourceTo: isoDate(req.body.sourceTo, 'sourceTo'),
+      targetFrom: isoDate(req.body.targetFrom, 'targetFrom'),
+      targetTo: isoDate(req.body.targetTo, 'targetTo'),
+    };
+    const src = spanDays(range.sourceFrom, range.sourceTo);
+    const dst = spanDays(range.targetFrom, range.targetTo);
+    if (src < 1 || src > 31 || dst < 1 || dst > MAX_RANGE_DAYS) throw new BadRequest('source must be 1-31 days and target 1-62 days');
+    if (range.targetFrom <= range.sourceTo && range.targetTo >= range.sourceFrom) throw new BadRequest('target must not overlap the source');
+    const rows = await copyRows(pool, range);
+    res.json({ rows: await saveDrafts(pool, rows, { dryRun: req.body.dryRun !== false, actorId: req.user?.id }) });
+  });
+
+  // Import drafts from the template sheet (xlsx or csv). dryRun (the default) only checks.
+  app.get('/api/sessions/import-template', requireManager, async (_req, res) => {
+    const wb = await importTemplate(pool);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="schedule-import-template.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
+  });
+
+  app.post('/api/sessions/import', requireManager, async (req, res) => {
+    const name = typeof req.body.filename === 'string' ? req.body.filename.toLowerCase() : '';
+    const kind = name.endsWith('.csv') ? 'csv' : name.endsWith('.xlsx') ? 'xlsx' : null;
+    if (!kind || typeof req.body.data !== 'string') throw new BadRequest('upload an .xlsx or .csv file');
+    let sheet;
+    try {
+      sheet = await readSheet(Buffer.from(req.body.data.replace(/^data:[^,]*,/, ''), 'base64'), kind);
+    } catch {
+      throw new BadRequest('could not read the file');
+    }
+    if (sheet.length === 0) throw new BadRequest('the file has no rows');
+    if (sheet.length > 1000) throw new BadRequest('at most 1000 rows per file');
+    const rows = await importRows(pool, sheet);
+    res.json({ rows: await saveDrafts(pool, rows, { dryRun: req.body.dryRun !== false, actorId: req.user?.id }) });
   });
 
   // Publishes every draft that starts in [from, to).
