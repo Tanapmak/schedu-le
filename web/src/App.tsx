@@ -17,6 +17,8 @@ const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 
 const adminPages: StringKey[] = [...operationPages, 'team'];
 const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'hours'];
 const viewerPages: StringKey[] = ['schedule', 'hours'];
+/** Phone bottom bar: this many pages, then a "More" button for the rest. */
+const BOTTOM_SLOTS = 4;
 const pagesFor = (role?: Role) =>
   role === 'admin' ? adminPages : role === 'operation' ? operationPages : role === 'mc' || role === 'pd' ? teamPages : viewerPages;
 type Health = 'checking' | 'ok' | 'down';
@@ -39,6 +41,7 @@ async function loadMe(): Promise<Me> {
 export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [page, setPage] = useState<StringKey>('schedule');
+  const [moreOpen, setMoreOpen] = useState(false);
   const [health, setHealth] = useState<Health>('checking');
   const [rooms, setRooms] = useState<Room[]>();
   const [people, setPeople] = useState<Person[]>();
@@ -147,12 +150,34 @@ export function App() {
       </header>
       {me && pagesFor(me.user.role) === teamPages && (
         <nav className="bottom-nav">
-          {teamPages.slice(0, 4).map((p) => (
-            <button key={p} className={p === page ? 'active' : ''} onClick={() => setPage(p)}>
+          {teamPages.slice(0, BOTTOM_SLOTS).map((p) => (
+            <button key={p} className={p === page ? 'active' : ''} onClick={() => (setPage(p), setMoreOpen(false))}>
               <span className={`ico ico-${p}`} aria-hidden="true" />
               {t(lang, p === 'schedule' ? 'wholeTeam' : p)}
             </button>
           ))}
+          {/* The rest (live results, hours) sit behind "More", so every page is reachable on a phone. */}
+          <button
+            className={moreOpen || teamPages.indexOf(page) >= BOTTOM_SLOTS ? 'active' : ''}
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((o) => !o)}
+          >
+            <span className="ico ico-more" aria-hidden="true" />
+            {teamPages.indexOf(page) >= BOTTOM_SLOTS ? t(lang, page) : t(lang, 'more')}
+          </button>
+          {moreOpen && (
+            <>
+              <div className="more-backdrop" onClick={() => setMoreOpen(false)} />
+              <div className="more-sheet" role="menu">
+                {teamPages.slice(BOTTOM_SLOTS).map((p) => (
+                  <button key={p} role="menuitem" className={p === page ? 'active' : ''} onClick={() => (setPage(p), setMoreOpen(false))}>
+                    <span className={`ico ico-${p}`} aria-hidden="true" />
+                    {t(lang, p)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </nav>
       )}
       <main>

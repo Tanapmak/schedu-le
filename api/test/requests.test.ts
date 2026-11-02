@@ -253,6 +253,10 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
 
     const list = await call('GET', '/api/results?from=2030-03-01T00:00:00%2B07:00&to=2030-03-02T00:00:00%2B07:00');
     expect(list.body.map((r: { gmvDelta: number }) => r.gmvDelta)).toEqual([3000, 7500, 12500]);
+    // Recorded the next morning: still listed under the session's day, not the day it was typed in.
+    expect((await save('2030-03-02T09:30', 3500, 3, false)).status).toBe(201);
+    const again = await call('GET', '/api/results?from=2030-03-01T00:00:00%2B07:00&to=2030-03-02T00:00:00%2B07:00');
+    expect(again.body).toHaveLength(4);
     expect((await call('POST', '/api/results', { sessionId: s, isNewBroadcast: true, metrics: { gmv: -1 } }, 'pd.a@example.com')).status).toBe(400);
   });
 

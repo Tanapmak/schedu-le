@@ -29,6 +29,7 @@ const strings = {
   roleViewer: { th: 'ดูอย่างเดียว', en: 'Viewer', zh: '只读' },
   roleOperation: { th: 'Operation', en: 'Operation', zh: '运营' },
 
+  more: { th: 'เพิ่มเติม', en: 'More', zh: '更多' },
   logout: { th: 'ออกจากระบบ', en: 'Log out', zh: '退出登录' },
   switchAccount: { th: 'เปลี่ยนบัญชี Google', en: 'Use another Google account', zh: '切换 Google 账号' },
   corrTitle: { th: 'ลืมลงเวลา?', en: 'Forgot to clock in or out?', zh: '忘记打卡？' },

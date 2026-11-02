@@ -64,7 +64,7 @@ main p { color: var(--muted); }
   main { padding: 16px; }
   .has-bottom-nav main { padding-bottom: 88px; }
   .bottom-nav {
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; height: 64px;
     background: #fff; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
   }
@@ -74,6 +74,18 @@ main p { color: var(--muted); }
   .ico-clockNav { border-radius: 50%; }
   .ico-schedule { border-radius: 4px; border-style: double; border-width: 3px; }
   .ico-leave { border-radius: 4px 4px 10px 10px; }
+  .ico-results { border-radius: 3px; border-bottom-width: 5px; }
+  .ico-hours { border-radius: 50% 50% 4px 4px; }
+  .ico-more { border: 0; background: radial-gradient(circle, currentColor 2px, transparent 2.5px) 0 50% / 7px 7px repeat-x; }
+  .bottom-nav button { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .more-backdrop { position: fixed; inset: 0 0 64px; background: rgb(0 0 0 / 0.25); }
+  .more-sheet {
+    position: fixed; right: 8px; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 7; min-width: 200px;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+    display: flex; flex-direction: column;
+  }
+  .more-sheet button { flex-direction: row !important; justify-content: flex-start !important; gap: 12px !important; font-size: 15px !important; padding: 12px; border-radius: 8px; height: auto; }
+  .more-sheet button.active { background: var(--red-soft); }
 }
 
 /* Controls */
@@ -401,6 +413,7 @@ table.data.requests tr.checks-row td { border-top: 0; padding-top: 0; white-spac
 table.data.requests tr.checks-row .checks { margin: 0; }
 /* Month view */
 .month-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
+.month-layout.no-panel { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 1100px) { .month-layout { grid-template-columns: 1fr; } }
 .month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .month-head { font-size: 12px; color: var(--gray-dark); padding: 0 4px 2px; }
