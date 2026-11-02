@@ -304,6 +304,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
           selected={date}
           onSelect={setDate}
           onOpenDay={(d) => (setDate(d), setView('day'))}
+          showPanel={!showPanelOption || panelOn}
         />
       )}
 

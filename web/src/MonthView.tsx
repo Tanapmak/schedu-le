@@ -43,9 +43,11 @@ interface Props {
   selected: string;
   onSelect: (d: string) => void;
   onOpenDay: (d: string) => void;
+  /** The summary panel toggle in the toolbar; off hides the side panel. */
+  showPanel?: boolean;
 }
 
-export function MonthView({ lang, month, days, rooms, data, nameOf, selected, onSelect, onOpenDay }: Props) {
+export function MonthView({ lang, month, days, rooms, data, nameOf, selected, onSelect, onOpenDay, showPanel = true }: Props) {
   const roomOf = (id: number) => rooms.find((r) => r.id === id);
   const overlaps = (day: string, x: { start: string; end: string }) =>
     new Date(x.start) < bkkInstant(addDays(day, 1), '00:00') && new Date(x.end) > bkkInstant(day, '00:00');
@@ -79,7 +81,7 @@ export function MonthView({ lang, month, days, rooms, data, nameOf, selected, on
   const today = todayBkk();
 
   return (
-    <div className="month-layout">
+    <div className={`month-layout${showPanel ? '' : ' no-panel'}`}>
       <div className="month-grid" role="grid">
         {weekdays.map((w) => (
           <div key={w} className="month-head">
@@ -127,64 +129,66 @@ export function MonthView({ lang, month, days, rooms, data, nameOf, selected, on
         </p>
       </div>
 
-      <aside className="summary-panel">
-        {sel && (
-          <section className="sp-card outlined">
-            <h3>{formatDay(selected, lang, { weekday: 'long', day: 'numeric', month: 'short' })}</h3>
-            <p className="muted">
-              {sel.holiday ?? `${sel.sessions.length} ${t(lang, 'sessionsUnit')} · ${sel.hours} ${t(lang, 'hoursSuffix')}`}
-            </p>
-            <dl>
-              {rooms
-                .filter((r) => sel.roomsUsed.has(r.id))
-                .map((r) => {
-                  const list = sel.sessions.filter((s) => s.roomId === r.id);
-                  const cover = list.filter((s) => leaveHit(s, data.leaves)?.status === 'approved').length;
-                  const noPd = r.roomType === 'live' && r.requiresPd ? list.filter((s) => !s.staff.some((x) => x.role === 'pd' && !x.replaced)).length : 0;
-                  return (
-                    <div key={r.id} className={cover || noPd ? 'hot' : ''}>
-                      <dt>{r.code}</dt>
-                      <dd>
-                        {list.length} {t(lang, 'sessionsUnit')}
-                        {cover > 0 && ` · ${t(lang, 'coverShort')} ${cover}`}
-                        {noPd > 0 && ` · ${t(lang, 'noPdShort')} ${noPd}`}
-                      </dd>
-                    </div>
-                  );
-                })}
-            </dl>
-            {sel.leaveIds.length > 0 && (
-              <p className="sp-note">
-                {t(lang, 'onLeave')}: {sel.leaveIds.map(nameOf).join(', ')}
+      {showPanel && (
+        <aside className="summary-panel">
+          {sel && (
+            <section className="sp-card outlined">
+              <h3>{formatDay(selected, lang, { weekday: 'long', day: 'numeric', month: 'short' })}</h3>
+              <p className="muted">
+                {sel.holiday ?? `${sel.sessions.length} ${t(lang, 'sessionsUnit')} · ${sel.hours} ${t(lang, 'hoursSuffix')}`}
               </p>
-            )}
-            <button className="sp-open" onClick={() => onOpenDay(selected)}>
-              {t(lang, 'openDayView')}
-            </button>
+              <dl>
+                {rooms
+                  .filter((r) => sel.roomsUsed.has(r.id))
+                  .map((r) => {
+                    const list = sel.sessions.filter((s) => s.roomId === r.id);
+                    const cover = list.filter((s) => leaveHit(s, data.leaves)?.status === 'approved').length;
+                    const noPd = r.roomType === 'live' && r.requiresPd ? list.filter((s) => !s.staff.some((x) => x.role === 'pd' && !x.replaced)).length : 0;
+                    return (
+                      <div key={r.id} className={cover || noPd ? 'hot' : ''}>
+                        <dt>{r.code}</dt>
+                        <dd>
+                          {list.length} {t(lang, 'sessionsUnit')}
+                          {cover > 0 && ` · ${t(lang, 'coverShort')} ${cover}`}
+                          {noPd > 0 && ` · ${t(lang, 'noPdShort')} ${noPd}`}
+                        </dd>
+                      </div>
+                    );
+                  })}
+              </dl>
+              {sel.leaveIds.length > 0 && (
+                <p className="sp-note">
+                  {t(lang, 'onLeave')}: {sel.leaveIds.map(nameOf).join(', ')}
+                </p>
+              )}
+              <button className="sp-open" onClick={() => onOpenDay(selected)}>
+                {t(lang, 'openDayView')}
+              </button>
+            </section>
+          )}
+          <section className="sp-card gray">
+            <h3>{t(lang, 'monthOverview')}</h3>
+            <dl>
+              <div>
+                <dt>{t(lang, 'totalSessions')}</dt>
+                <dd>{total}</dd>
+              </div>
+              <div>
+                <dt>{t(lang, 'unplannedDays')}</dt>
+                <dd>{unplanned}</dd>
+              </div>
+              <div className={issues ? 'hot' : ''}>
+                <dt>{t(lang, 'issuesCount')}</dt>
+                <dd>{issues}</dd>
+              </div>
+              <div>
+                <dt>{t(lang, 'draftCount')}</dt>
+                <dd>{drafts}</dd>
+              </div>
+            </dl>
           </section>
-        )}
-        <section className="sp-card gray">
-          <h3>{t(lang, 'monthOverview')}</h3>
-          <dl>
-            <div>
-              <dt>{t(lang, 'totalSessions')}</dt>
-              <dd>{total}</dd>
-            </div>
-            <div>
-              <dt>{t(lang, 'unplannedDays')}</dt>
-              <dd>{unplanned}</dd>
-            </div>
-            <div className={issues ? 'hot' : ''}>
-              <dt>{t(lang, 'issuesCount')}</dt>
-              <dd>{issues}</dd>
-            </div>
-            <div>
-              <dt>{t(lang, 'draftCount')}</dt>
-              <dd>{drafts}</dd>
-            </div>
-          </dl>
-        </section>
-      </aside>
+        </aside>
+      )}
     </div>
   );
 }
