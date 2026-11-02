@@ -133,6 +133,17 @@ describe('AI scheduling solver', () => {
     expect(withPerf[0].mc).toBe(2);
   });
 
+  it('picks the MC who sells best with the chosen PD', () => {
+    const people = [person(1, 'mc', { nickname: 'Aom' }), person(2, 'mc', { nickname: 'Ponz' }), person(3, 'pd', { nickname: 'Zone' })];
+    const evening = slot(1, '2030-01-07T19:00', '2030-01-07T21:00');
+    const scores = scoreMap([{ nickname: 'ponz+zone', role: 'pair', roomCode: 'TTS 1', band: null, ratio: 1.5, n: 30 }]);
+    const plan = solve(base({ slots: [evening], people, allowed: everyone(people), performance: { scores, roomCode: new Map([[1, 'TTS 1']]) } }));
+    expect(plan[0]).toMatchObject({ pd: 3, mc: 2 });
+    // With performance turned off by the admin's wishes, the tie goes back to the lower id.
+    const off = solve(base({ slots: [evening], people, allowed: everyone(people), performance: { scores, roomCode: new Map([[1, 'TTS 1']]) }, wishes: { ...noWishes, performanceWeight: 0 } }));
+    expect(off[0].mc).toBe(1);
+  });
+
   it('reads CSV with quoted commas, quotes and line breaks', () => {
     expect(parseCsv('\uFEFFa,b,c\r\n1,"x, ""y"" z","line\nbreak"\n\n2,,\n')).toEqual([
       ['a', 'b', 'c'],
@@ -150,9 +161,10 @@ describe('AI scheduling solver', () => {
 
   it('maps names and room codes loosely, and lists unknown names', () => {
     const raw: RawWishes = {
-      rules: [{ person: 'new year', kind: 'avoid', strength: 'must', weekdays: ['fri'], dates: [], from: '22:00', to: '2:00', rooms: ['tts1'], role: 'any' }],
+      rules: [{ person: 'new year | mc | full_time', kind: 'avoid', strength: 'must', weekdays: ['fri'], dates: [], from: '22:00', to: '2:00', rooms: ['tts1'], role: 'any' }],
       hours: [{ person: 'Ghost', kind: 'more', hours: null }],
       pairs: [],
+      performance: 'more',
       summary: ['Newyear: no Friday nights'],
       not_understood: [],
     };
@@ -160,6 +172,7 @@ describe('AI scheduling solver', () => {
     expect(w.rules).toEqual([{ personId: 7, kind: 'avoid', strength: 'must', weekdays: [5], dates: [], from: '22:00', to: '02:00', roomIds: [3], role: 'any' }]);
     expect(w.hours).toEqual([]);
     expect(w.notUnderstood).toEqual(['Ghost']);
+    expect(w.performanceWeight).toBe(2);
   });
 });
 
@@ -186,6 +199,7 @@ describe.skipIf(!url)('AI scheduling API', () => {
         rules: [{ person: 'mc a', kind: 'avoid', strength: 'must', weekdays: [], dates: ['2030-01-14'], from: null, to: null, rooms: [], role: 'any' }],
         hours: [],
         pairs: [],
+        performance: 'normal',
         summary: ['MC A off on 14 Jan'],
         not_understood: [],
       };

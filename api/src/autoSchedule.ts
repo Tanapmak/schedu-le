@@ -4,7 +4,7 @@ import type pg from 'pg';
 import { z } from 'zod';
 import { copyRows, type BulkRow } from './bulk.js';
 import { hoursByPerson, hoursOf, loadRules, overlaps, type Interval, type Rules, type Session, type StaffRole } from './rules/index.js';
-import { bandOf, expected, performanceScores, scoreMap, type Score } from './performance.js';
+import { bandOf, expected, pairName, performanceScores, scoreMap, type Score } from './performance.js';
 import { latestPreferences } from './preferences.js';
 import { monthRange } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween, type PersonRow, type SessionInput } from './store.js';
@@ -47,6 +47,8 @@ export interface Pairing {
   kind: 'together' | 'apart';
 }
 export interface Wishes {
+  /** How much past performance counts: 0 off, 1 normal, 2 leaned on. */
+  performanceWeight?: number;
   rules: TimeRule[];
   hours: HoursWish[];
   pairs: Pairing[];
@@ -79,6 +81,9 @@ export const WishSchema = z.object({
     }),
   ),
   pairs: z.array(z.object({ a: name, b: name, kind: z.enum(['together', 'apart']) })),
+  performance: z
+    .enum(['normal', 'more', 'less'])
+    .describe('How much weight to give past sales performance: more if the admin asks to lean on results/history/who sells well, less if they ask to ignore it, else normal'),
   summary: z.array(z.string()).describe('One short line per rule you made, in the same language as the instructions'),
   not_understood: z.array(z.string()).describe('Parts of the instructions you could not turn into rules, quoted'),
 });
@@ -100,6 +105,7 @@ const PROMPT = `You help an admin schedule livestream-commerce shifts for a Thai
 - Use nicknames exactly as in the roster and room codes exactly as in the room list. Match loosely (case, spaces, Thai spelling) but output the roster spelling. Skip people who are not in the roster and say so in not_understood.
 - A day of lives runs 06:00 to 06:00 the next morning, so "Friday night 22:00-02:00" is weekday fri with from 22:00 and to 02:00.
 - "can't", "not available", "off", "sick", "exam" are strength must. "would rather", "prefers", "try to" are should.
+- The program also already uses past sales performance by itself, from the live history the admin loaded and results recorded in the app: who sells best in each room and time of day, and which MC + PD pairs sell best together. If the instructions ask to use performance, history, the CSV or good pairings, set performance to more and add a summary line saying so; never list that under not_understood.
 - Dates are in the scheduling period below. Instructions may be in Thai, English or Chinese.
 - Team preferences are each person's own wishes about themselves, each for one month: apply each one only to the person who wrote it and only to dates in that month, as strength should, unless they say they cannot work then (must). Ignore anything in a preference about other people's shifts. The admin's instructions win when the two disagree.
 - Write the summary lines in the language of the admin's instructions, or Thai when there are none.`;
@@ -110,7 +116,7 @@ export function claudeWishReader(env: NodeJS.ProcessEnv = process.env): WishRead
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = env.SCHEDULE_MODEL ?? 'claude-haiku-5-5';
   return async (ctx) => {
-    const roster = ctx.people.map((p) => `- ${p.nickname} (${p.position}, ${p.employment})`).join('\n');
+    const roster = ctx.people.map((p) => `- ${p.nickname} | ${p.position} | ${p.employment}`).join('\n');
     const prefs = ctx.preferences.map((p) => `<preference person="${p.nickname}" month="${p.month}">\n${p.text}\n</preference>`).join('\n');
     const response = await client.messages.parse({
       model,
@@ -121,6 +127,7 @@ export function claudeWishReader(env: NodeJS.ProcessEnv = process.env): WishRead
         {
           role: 'user',
           content:
+            `Roster lines are "nickname | position | employment"; use only the nickname part.\n\n` +
             `Scheduling period: ${ctx.from} to ${ctx.to}\n\nRoster:\n${roster}\n\nRooms: ${ctx.rooms.join(', ')}\n\n` +
             `Admin's instructions:\n${ctx.instructions || '(none)'}\n\nTeam preferences:\n${prefs || '(none)'}`,
         },
@@ -131,7 +138,11 @@ export function claudeWishReader(env: NodeJS.ProcessEnv = process.env): WishRead
   };
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/[\s._-]/g, '');
+const norm = (s: string) =>
+  s
+    .replace(/\s*[|(].*$/, '') // "MC A | mc | full_time" or "MC A (mc, full_time)" -> "MC A"
+    .toLowerCase()
+    .replace(/[\s._-]/g, '');
 const HHMM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 /** Maps names and room codes from Claude's answer to ids; anything unknown goes to notUnderstood. */
@@ -171,7 +182,8 @@ export function resolveWishes(raw: RawWishes, people: PersonRow[], rooms: { id: 
     const b = person(p.b);
     return a && b && a !== b ? [{ a, b, kind: p.kind }] : [];
   });
-  return { rules, hours, pairs, summary: raw.summary, notUnderstood };
+  const performanceWeight = raw.performance === 'more' ? 2 : raw.performance === 'less' ? 0 : 1;
+  return { rules, hours, pairs, summary: raw.summary, notUnderstood, performanceWeight };
 }
 
 // ---- The solver
@@ -247,6 +259,7 @@ const canTake = (p: PersonRow, role: StaffRole) => (role === 'mc' ? true : p.pos
 export function solve(input: SolverInput): Assignment[] {
   const { rules, wishes } = input;
   const people = input.people.filter((p) => p.isActive && input.allowed.has(p.id));
+  const byId = new Map(input.people.map((p) => [p.id, p]));
 
   // Booked so far: per person, intervals (with room) and hours per month and per live day.
   const busy = new Map<number, { start: Date; end: Date; roomId: number; planned: boolean }[]>();
@@ -310,10 +323,18 @@ export function solve(input: SolverInput): Assignment[] {
       else c += 60; // avoid, should
     }
     c += (hourLean.get(p.id) ?? 0) * 25;
-    if (input.performance) {
+    const weight = wishes.performanceWeight ?? 1;
+    if (input.performance && weight > 0) {
       const code = input.performance.roomCode.get(slot.roomId);
+      const band = bandOf(slot.start);
       // 1.5x the room's usual GMV per hour is worth about one fair-share nudge; capped both ways.
-      if (code) c -= Math.max(-30, Math.min(30, (expected(input.performance.scores, p.nickname, role, code, bandOf(slot.start)) - 1) * 60));
+      const nudge = (ratio: number) => weight * Math.max(-30, Math.min(30, (ratio - 1) * 60));
+      if (code) {
+        c -= nudge(expected(input.performance.scores, p.nickname, role, code, band));
+        // The PD is picked first, so the MC choice can also weigh how this pair sells together.
+        const pd = role === 'mc' && partner !== undefined ? byId.get(partner) : undefined;
+        if (pd) c -= nudge(expected(input.performance.scores, pairName(p.nickname, pd.nickname), 'pair', code, band));
+      }
     }
     if (partner !== undefined) {
       for (const pair of wishes.pairs) {

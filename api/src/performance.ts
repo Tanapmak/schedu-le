@@ -18,9 +18,13 @@ export function bandOf(d: Date): Band {
   return h < 6 ? 'late' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
 }
 
+/** 'pair' scores a host and a producer together; its nickname is "mc+pd" (lower case). */
+export type ScoreRole = StaffRole | 'pair';
+export const pairName = (mc: string, pd: string) => `${mc.toLowerCase()}+${pd.toLowerCase()}`;
+
 export interface Score {
   nickname: string;
-  role: StaffRole;
+  role: ScoreRole;
   roomCode: string;
   band: Band | null; // null = the room overall
   ratio: number; // 1 = the room's average
@@ -40,7 +44,10 @@ export async function performanceScores(db: Db, now = new Date()): Promise<{ sco
      lives AS (
        SELECT 'h' || h.id AS live, h.room_code, h.started_at, h.hours::float8 AS hours, h.gmv::float8 AS gmv, x.nickname, x.role
          FROM performance_history h
-         CROSS JOIN LATERAL (SELECT unnest(h.mc) AS nickname, 'mc' AS role UNION ALL SELECT unnest(h.pd), 'pd') x
+         CROSS JOIN LATERAL (
+           SELECT unnest(h.mc) AS nickname, 'mc' AS role UNION ALL SELECT unnest(h.pd), 'pd'
+           UNION ALL SELECT lower(h.mc[1]) || '+' || lower(h.pd[1]), 'pair' WHERE h.mc[1] <> '' AND h.pd[1] <> ''
+         ) x
         WHERE h.started_at >= $1 AND h.gmv IS NOT NULL
        UNION ALL
        SELECT 'a' || a.id, a.room_code, a.started_at, a.hours::float8, a.gmv::float8, p.nickname, st.role::text
@@ -48,6 +55,15 @@ export async function performanceScores(db: Db, now = new Date()): Promise<{ sco
          JOIN session_staff st ON st.session_id = a.id AND NOT st.replaced
          JOIN people p ON p.id = st.person_id
         WHERE a.gmv IS NOT NULL
+       UNION ALL
+       SELECT 'a' || a.id, a.room_code, a.started_at, a.hours::float8, a.gmv::float8, lower(c.mc) || '+' || lower(c.pd), 'pair'
+         FROM app a
+         CROSS JOIN LATERAL (
+           SELECT min(p.nickname) FILTER (WHERE st.role = 'mc') AS mc, min(p.nickname) FILTER (WHERE st.role = 'pd') AS pd
+             FROM session_staff st JOIN people p ON p.id = st.person_id
+            WHERE st.session_id = a.id AND NOT st.replaced
+         ) c
+        WHERE a.gmv IS NOT NULL AND c.mc IS NOT NULL AND c.pd IS NOT NULL
      ),
      rated AS (
        SELECT *, (gmv / hours) / NULLIF(avg(gmv / hours) OVER (PARTITION BY room_code, date_trunc('month', started_at AT TIME ZONE 'Asia/Bangkok')), 0) AS ratio,
@@ -76,7 +92,7 @@ export async function performanceScores(db: Db, now = new Date()): Promise<{ sco
 const SHRINK = 5; // lives needed before a score counts half
 
 /** A person's expected ratio for a room and time of day, pulled towards 1 when there is little data. */
-export function expected(scores: Map<string, Score>, nickname: string, role: StaffRole, roomCode: string, band: Band): number {
+export function expected(scores: Map<string, Score>, nickname: string, role: ScoreRole, roomCode: string, band: Band): number {
   const key = (b: Band | null) => `${nickname.toLowerCase()}|${role}|${roomCode}|${b ?? ''}`;
   const room = scores.get(key(null));
   const roomEst = room ? (room.n * room.ratio + SHRINK) / (room.n + SHRINK) : 1;

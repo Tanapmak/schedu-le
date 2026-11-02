@@ -282,8 +282,10 @@ export function AutoSchedule({
               </div>
             )}
 
+            {plan.performanceLives ? <p className="hint">{t(lang, 'aiPerfUsed').replace('{n}', plan.performanceLives.toLocaleString())}</p> : null}
             {leftAlone > 0 && <p className="hint">{t(lang, 'aiRoomTaken').replace('{n}', String(leftAlone))}</p>}
-            <Preview lang={lang} rows={shown} rooms={rooms} people={people} />
+            {shown.length === 0 && <p className="warning-text">{t(lang, 'aiNothingToFill')}</p>}
+            {shown.length > 0 && <Preview lang={lang} rows={shown} rooms={rooms} people={people} />}
           </>
         )}
 
