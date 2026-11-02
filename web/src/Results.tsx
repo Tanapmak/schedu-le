@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
-import { api, METRICS, type Metric, type Person, type Reading, type ResultRow, type Room, type Session, type User, isManager } from './api';
+import { api, METRICS, type Metric, type Person, type Reading, type ReadingBox, type ResultRow, type Room, type Session, type User, isManager } from './api';
 import { t, type Lang, type StringKey } from './i18n';
 import { Board } from './Board';
 import { bkkDate, bkkInstant, bkkTime } from './time';
@@ -20,14 +20,39 @@ const readingKey: Record<Metric, keyof Reading> = {
 };
 
 /** Shrinks a photo to at most 1600 px on the long side as JPEG, so uploads stay small and fast. */
-async function toDataUrl(file: Blob): Promise<string> {
+async function toDataUrl(file: Blob): Promise<Shot> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL('image/jpeg', 0.88);
+  return { url: canvas.toDataURL('image/jpeg', 0.88), width: canvas.width, height: canvas.height };
+}
+interface Shot { url: string; width: number; height: number }
+
+/** The screenshot with the AI's boxes drawn over it; `active` is highlighted. */
+function BoxedImage({ shot, boxes, active, label, onPick, reading }: {
+  shot: Shot; boxes: ReadingBox[]; active: string | null; label: (field: string) => string; onPick?: (field: string) => void; reading?: boolean;
+}) {
+  return (
+    <div className={`boxed ${reading ? 'is-reading' : ''}`}>
+      <img src={shot.url} alt="" />
+      {boxes.map((b, i) => (
+        <button
+          key={i}
+          type="button"
+          className={`read-box ${active === b.field ? 'active' : ''} ${active && active !== b.field ? 'dim' : ''}`}
+          style={{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.w * 100}%`, height: `${b.h * 100}%` }}
+          title={label(b.field)}
+          onClick={(e) => (e.stopPropagation(), onPick?.(b.field))}
+        >
+          <span>{label(b.field)}</span>
+        </button>
+      ))}
+      {reading && <div className="scan" aria-hidden="true" />}
+    </div>
+  );
 }
 
 const localInput = (d: Date) => `${bkkDate(d)}T${bkkTime(d)}`; // for <input type="datetime-local">, Bangkok time
@@ -160,7 +185,10 @@ function Readings({ lang, user, rooms, rows, onChanged }: { lang: Lang; user: Us
 type AiState = 'idle' | 'reading' | 'done' | 'failed';
 
 function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessionId: number; aiReader: boolean; onSaved: () => void }) {
-  const [image, setImage] = useState<string>();
+  const [image, setImage] = useState<Shot>();
+  const [boxes, setBoxes] = useState<ReadingBox[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+  const inputs = useRef<Partial<Record<string, HTMLInputElement | null>>>({});
   const [ai, setAi] = useState<AiState>('idle');
   const [reading, setReading] = useState<Reading | null>(null);
   const [values, setValues] = useState<Partial<Record<Metric, string>>>({});
@@ -181,20 +209,24 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
   }, [sessionId, liveStartedAt, savedTick]);
 
   async function useImage(file: Blob) {
-    const url = await toDataUrl(file);
-    setImage(url);
+    const shot = await toDataUrl(file);
+    setImage(shot);
+    setBoxes([]);
+    setActive(null);
     setMessage('');
-    if (aiReader) await read(url);
+    if (aiReader) await read(shot);
   }
 
-  async function read(url = image) {
-    if (!url) return;
+  async function read(shot = image) {
+    if (!shot) return;
     setAi('reading');
+    setBoxes([]);
     try {
-      const { status, data } = await api.readScreenshot(sessionId, url);
+      const { status, data } = await api.readScreenshot(sessionId, shot.url, shot.width, shot.height);
       if (status !== 200) throw new Error(data.error);
       const r = data.reading;
       setReading(r);
+      setBoxes(data.boxes ?? []);
       setValues(Object.fromEntries(METRICS.map((m) => [m, r[readingKey[m]] == null ? '' : String(r[readingKey[m]])])));
       setExtra(r.extra);
       if (data.liveStartedAt) setLiveStartedAt(localInput(new Date(data.liveStartedAt)));
@@ -216,6 +248,24 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
   };
 
   const unsure = new Set(reading?.unsure ?? []);
+  const metricOf = Object.fromEntries(METRICS.map((m) => [readingKey[m], m])) as Record<string, Metric>;
+  const boxLabel = (field: string) =>
+    field.startsWith('extra:') ? field.slice(6)
+      : metricOf[field] ? t(lang, `m_${metricOf[field]}` as StringKey)
+      : field === 'live_started_at' ? t(lang, 'liveStartedAt')
+      : field === 'account_name' ? t(lang, 'accountName')
+      : field;
+  const boxed = new Set(boxes.map((b) => b.field));
+  // Clicking a box jumps to its field.
+  const pick = (field: string) => {
+    setActive(field);
+    inputs.current[field]?.focus();
+  };
+  const hover = (field: string) => ({
+    onMouseEnter: () => boxed.has(field) && setActive(field),
+    onMouseLeave: () => setActive((a) => (a === field ? null : a)),
+    onFocus: () => boxed.has(field) && setActive(field),
+  });
   const hasNumbers = METRICS.some((m) => values[m]);
 
   async function save() {
@@ -236,6 +286,8 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
       if (status !== 201) return setMessage(data.message ?? t(lang, 'loadFailed'));
       setMessage(t(lang, 'saved'));
       setImage(undefined);
+      setBoxes([]);
+      setActive(null);
       setReading(null);
       setValues({});
       setExtra([]);
@@ -262,7 +314,18 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDrop}
         >
-          {image ? <img src={image} alt="" /> : <span>{t(lang, 'dropHint')}</span>}
+          {image ? (
+            <BoxedImage shot={image} boxes={boxes} active={active} label={boxLabel} onPick={pick} reading={ai === 'reading'} />
+          ) : (
+            <span>{t(lang, 'dropHint')}</span>
+          )}
+          {image && ai === 'reading' && (
+            <div className="reading-overlay" role="status">
+              <span className="spinner" aria-hidden="true" />
+              <strong>{t(lang, 'aiReading')}</strong>
+              <small>{t(lang, 'aiReadingWait')}</small>
+            </div>
+          )}
           <input
             ref={fileRef}
             type="file"
@@ -284,13 +347,14 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
         {zoom && image && (
           <div className="zoom-backdrop" role="dialog" aria-modal="true" onClick={() => setZoom(false)}>
             <button className="zoom-close" aria-label="close" onClick={() => setZoom(false)}>×</button>
-            <img src={image} alt="" />
+            <BoxedImage shot={image} boxes={boxes} active={active} label={boxLabel} />
           </div>
         )}
       </div>
 
       <div className="result-fields">
         <p className={`ai-status ${ai}`} aria-live="polite">
+          {ai === 'reading' && <span className="spinner small" aria-hidden="true" />}
           {!aiReader ? t(lang, 'aiOff') : ai === 'reading' ? t(lang, 'aiReading') : ai === 'done' ? t(lang, 'aiDone') : ai === 'failed' ? t(lang, 'aiFailed') : ''}
           {aiReader && image && ai !== 'reading' && (
             <button className="link" onClick={() => read()}>
@@ -298,6 +362,7 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
             </button>
           )}
         </p>
+        {boxes.length > 0 && ai === 'done' && <p className="hint">{t(lang, 'aiBoxesHint')}</p>}
         <div className="form-grid">
           <label>
             {t(lang, 'capturedAt')}
@@ -305,7 +370,13 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
           </label>
           <label>
             {t(lang, 'liveStartedAt')}
-            <input type="datetime-local" value={liveStartedAt} onChange={(e) => setLiveStartedAt(e.target.value)} />
+            <input
+              type="datetime-local"
+              value={liveStartedAt}
+              ref={(el) => void (inputs.current.live_started_at = el)}
+              {...hover('live_started_at')}
+              onChange={(e) => setLiveStartedAt(e.target.value)}
+            />
           </label>
           <div className="wide">
             <div className="segmented" role="group" aria-label={t(lang, 'flag')}>
@@ -319,9 +390,12 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
             <p className="hint">{t(lang, 'flagHint')}</p>
           </div>
           {METRICS.map((m) => (
-            <label key={m} className={unsure.has(readingKey[m]) ? 'unsure' : ''}>
+            <label key={m} className={`${unsure.has(readingKey[m]) ? 'unsure' : ''} ${active === readingKey[m] ? 'linked' : ''}`}>
               {t(lang, `m_${m}` as StringKey)}
+              {boxed.has(readingKey[m]) && <span className="box-dot" aria-hidden="true" />}
               <input
+                ref={(el) => void (inputs.current[readingKey[m]] = el)}
+                {...hover(readingKey[m])}
                 inputMode="decimal"
                 value={values[m] ?? ''}
                 onChange={(e) => setValues((v) => ({ ...v, [m]: e.target.value.replace(/[^\d.]/g, '') }))}
@@ -332,7 +406,12 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
             <div className="wide extra">
               <span className="hint">{t(lang, 'extraMetrics')}</span>
               {extra.map((x, i) => (
-                <span key={i} className="pill">
+                <span
+                  key={i}
+                  className={`pill ${boxed.has(`extra:${x.label}`) ? 'has-box' : ''} ${active === `extra:${x.label}` ? 'linked' : ''}`}
+                  tabIndex={boxed.has(`extra:${x.label}`) ? 0 : undefined}
+                  {...hover(`extra:${x.label}`)}
+                >
                   {x.label}: {x.value}
                 </span>
               ))}

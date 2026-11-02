@@ -214,7 +214,7 @@ function ImportPanel({ lang, rooms, people, onDone }: { lang: Lang; rooms: Room[
 }
 
 /** What will be added, and every skipped row with its reason. */
-function Preview({ lang, rows, rooms, people, showRow }: { lang: Lang; rows: BulkRow[]; rooms: Room[]; people: Person[]; showRow?: boolean }) {
+export function Preview({ lang, rows, rooms, people, showRow }: { lang: Lang; rows: BulkRow[]; rooms: Room[]; people: Person[]; showRow?: boolean }) {
   const nameOf = (id: number) => people.find((p) => p.id === id)?.nickname ?? `#${id}`;
   const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
   const good = rows.filter((r) => r.ok).length;

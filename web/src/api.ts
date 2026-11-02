@@ -181,6 +181,8 @@ export interface Me {
   devUsers?: { nickname: string; email: string; role: Role }[];
   /** False when no AI key is set on the server: results are typed in by hand. */
   aiReader?: boolean;
+  /** False when no AI key is set: AI scheduling still works, without free-text wishes. */
+  aiPlanner?: boolean;
 }
 
 export const METRICS = ['gmv', 'orders', 'itemsSold', 'views', 'avgViewSec', 'productClicks', 'buyers', 'addToCart', 'adsCost', 'durationMin'] as const;
@@ -203,6 +205,9 @@ export interface Reading {
   extra: { label: string; value: string }[];
   unsure: string[];
 }
+
+/** Where the AI read a value, as fractions (0..1) of the image. field is a Reading key or "extra:<label>". */
+export interface ReadingBox { field: string; x: number; y: number; w: number; h: number }
 
 export interface ResultRow extends Partial<Record<Metric, number | null>> {
   id: number;
@@ -358,6 +363,36 @@ export interface BulkRow {
   violations: ViolationLike[];
 }
 
+export interface AutoPlanRequest {
+  sourceFrom: string;
+  targetFrom: string;
+  targetTo: string;
+  peopleIds: number[];
+  maxDayHours: number;
+  instructions: string;
+  usePreferences: boolean;
+  usePerformance: boolean;
+}
+
+export interface TeamPreference {
+  id: number;
+  personId: number;
+  nickname: string;
+  /** YYYY-MM the wishes are for. */
+  month: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface AutoPlan {
+  rows: BulkRow[];
+  aiUsed: boolean;
+  wishes: { summary: string[]; notUnderstood: string[] } | null;
+  preferencesUsed: number;
+  performanceLives: number | null;
+  people: { personId: number; plannedHours: number; months: { month: string; hours: number; kpi: number | null; max: number }[] }[];
+}
+
 export async function downloadImportTemplate(): Promise<boolean> {
   const asUser = devUser();
   const res = await fetch('/api/sessions/import-template', { headers: asUser ? { 'x-dev-user': asUser } : {} });
@@ -436,8 +471,8 @@ export const api = {
     (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
   removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,
   hours: async (month: string) => (await request<{ month: string; rows: HoursRow[] }>('GET', `/api/hours?month=${month}`)).data.rows,
-  readScreenshot: async (sessionId: number, image: string) =>
-    request<{ reading: Reading; liveStartedAt: string | null; isNewBroadcast: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image }),
+  readScreenshot: async (sessionId: number, image: string, width?: number, height?: number) =>
+    request<{ reading: Reading; boxes: ReadingBox[]; liveStartedAt: string | null; isNewBroadcast: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image, width, height }),
   suggestFlag: async (sessionId: number, liveStartedAt: string | null) =>
     (await request<{ isNewBroadcast: boolean }>('GET', `/api/results/flag?sessionId=${sessionId}${liveStartedAt ? `&liveStartedAt=${encodeURIComponent(liveStartedAt)}` : ''}`)).data.isNewBroadcast,
   saveResult: async (input: ResultInput) => request<{ ok: boolean; id: number; message?: string }>('POST', '/api/results', input),
@@ -448,6 +483,26 @@ export const api = {
   clockOut: async (at: Fix) => (await request<ClockResult>('POST', '/api/attendance/clock-out', { ...at })).data,
   copySessions: async (range: { sourceFrom: string; sourceTo: string; targetFrom: string; targetTo: string }, dryRun: boolean) =>
     (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/copy', { ...range, dryRun })).data,
+  autoDefaults: async () =>
+    (await request<{ peopleIds: number[]; aiPlanner: boolean; performanceLives: number }>('GET', '/api/schedule/auto/defaults')).data,
+  loadHistory: async (csv: string) => {
+    const { status, data } = await request<{ loaded?: number; skipped?: number; message?: string }>('POST', '/api/performance/history', { csv });
+    return status === 200 ? { loaded: data.loaded!, skipped: data.skipped! } : { error: data.message ?? 'failed' };
+  },
+  myPreferences: async () => (await request<TeamPreference[]>('GET', '/api/preferences/me')).data,
+  sendMyPreference: async (month: string, text: string) => (await request('POST', '/api/preferences/me', { month, text })).status === 201,
+  /** Everyone's latest wishes per month in [from, to] (managers). */
+  preferences: async (from: string, to = from) => (await request<TeamPreference[]>('GET', `/api/preferences?from=${from}&to=${to}`)).data,
+  autoPlan: async (req: AutoPlanRequest) => {
+    try {
+      const { status, data } = await request<AutoPlan & { error?: string; message?: string }>('POST', '/api/schedule/auto', req);
+      return status === 200 ? { plan: data as AutoPlan } : { error: data.message ?? data.error ?? 'failed' };
+    } catch {
+      return { error: 'ai_failed' };
+    }
+  },
+  autoSave: async (sessions: { roomId: number; start: string; end: string; staff: { personId: number; role: StaffRole }[] }[]) =>
+    (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/schedule/auto/save', { sessions })).data,
   importSessions: async (filename: string, data: string, dryRun: boolean) =>
     (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/import', { filename, data, dryRun })).data,
   corrections: async () => (await request<Correction[]>('GET', '/api/attendance/corrections')).data,

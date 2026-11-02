@@ -65,7 +65,7 @@ Rules: leave is limited to `leave_quota_per_day` people per position per day (pe
 over with a reason. Approving re-checks the quota and warns about sessions the person would miss. A swap hands a session to
 someone or trades two sessions; approving re-runs the session rules.
 
-Screenshot reading needs `ANTHROPIC_API_KEY` (model `claude-opus-5-5`, override with `RESULTS_MODEL`). Without it the
+Screenshot reading needs `ANTHROPIC_API_KEY` (model `claude-haiku-5-5`, override with `RESULTS_MODEL`). Without it the
 Live results page still works with typed-in numbers. On Cloud Run, keep the key in Secret Manager:
 
 ```sh
@@ -76,6 +76,18 @@ gcloud run services update schedu-le --region=asia-southeast1 --update-secrets=A
 ```
 
 Cloud Build deploys with `--update-secrets`, so the key stays across deploys.
+
+AI scheduling (schedule page → "✨ AI จัดตาราง", admin and operation): the lives (room + time) of a pattern week are
+laid onto the chosen dates by weekday, and a solver (`api/src/autoSchedule.ts`) picks the MC and PD for each one. Hard
+limits: no clashes, nobody on leave (pending or approved) or on a team off day, monthly hour cap, hours per day. Soft
+goals: keep the same crew on a room for a block, share hours towards KPI, full-time staff before interns before cover,
+past performance, and wishes. Claude only turns the admin's free text and each person's own preferences (Preferences
+page, every role) into rules for the solver; without `ANTHROPIC_API_KEY` the solver still runs on the rules alone. Model
+`claude-haiku-5-5`, override with `SCHEDULE_MODEL`. Nothing is saved until the admin adds the plan as drafts.
+
+Past performance compares each live's GMV per hour with the same room's average that month, per person, room and time of
+day, over the last 12 months: lives recorded in the app, plus the cleaned history sheet (`live_history_cleaned_v2.csv`),
+which an admin loads once from the AI scheduling window ("นำเข้าประวัติไลฟ์ (CSV)"; loading again replaces it).
 
 The payroll workbook (`/api/export/payroll?month=YYYY-MM`) has three sheets: Summary (hours, KPI, GMV per person),
 Sessions (every counted line) and Freelance (each freelancer's lives with totals). It holds no pay rates; guests are left out.
