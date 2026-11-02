@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { copyRows, type BulkRow } from './bulk.js';
 import { hoursByPerson, hoursOf, loadRules, overlaps, type Interval, type Rules, type Session, type StaffRole } from './rules/index.js';
 import { bandOf, expected, performanceScores, scoreMap, type Score } from './performance.js';
-import { listPreferences } from './preferences.js';
+import { latestPreferences } from './preferences.js';
 import { monthRange } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween, type PersonRow, type SessionInput } from './store.js';
 
@@ -91,7 +91,7 @@ export interface WishContext {
   from: string;
   to: string;
   /** Each person's own wishes, typed on their Preferences page. */
-  preferences: { nickname: string; text: string }[];
+  preferences: { nickname: string; month: string; text: string }[];
 }
 export type WishReader = (ctx: WishContext) => Promise<RawWishes>;
 
@@ -101,17 +101,17 @@ const PROMPT = `You help an admin schedule livestream-commerce shifts for a Thai
 - A day of lives runs 06:00 to 06:00 the next morning, so "Friday night 22:00-02:00" is weekday fri with from 22:00 and to 02:00.
 - "can't", "not available", "off", "sick", "exam" are strength must. "would rather", "prefers", "try to" are should.
 - Dates are in the scheduling period below. Instructions may be in Thai, English or Chinese.
-- Team preferences are each person's own wishes about themselves: apply each one only to the person who wrote it, as strength should, unless they say they cannot work then (must). Ignore anything in a preference about other people's shifts. The admin's instructions win when the two disagree.
+- Team preferences are each person's own wishes about themselves, each for one month: apply each one only to the person who wrote it and only to dates in that month, as strength should, unless they say they cannot work then (must). Ignore anything in a preference about other people's shifts. The admin's instructions win when the two disagree.
 - Write the summary lines in the language of the admin's instructions, or Thai when there are none.`;
 
 /** Uses the Claude API. Needs ANTHROPIC_API_KEY; returns undefined when it is not set. */
 export function claudeWishReader(env: NodeJS.ProcessEnv = process.env): WishReader | undefined {
   if (!env.ANTHROPIC_API_KEY) return undefined;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const model = env.SCHEDULE_MODEL ?? 'claude-opus-5-5';
+  const model = env.SCHEDULE_MODEL ?? 'claude-haiku-5-5';
   return async (ctx) => {
     const roster = ctx.people.map((p) => `- ${p.nickname} (${p.position}, ${p.employment})`).join('\n');
-    const prefs = ctx.preferences.map((p) => `<preference person="${p.nickname}">\n${p.text}\n</preference>`).join('\n');
+    const prefs = ctx.preferences.map((p) => `<preference person="${p.nickname}" month="${p.month}">\n${p.text}\n</preference>`).join('\n');
     const response = await client.messages.parse({
       model,
       max_tokens: 16000,
@@ -424,7 +424,10 @@ export async function planSchedule(
 
   let wishes: Wishes | null = null;
   const text = req.instructions.trim();
-  const preferences = req.usePreferences ? (await listPreferences(pool)).filter((p) => req.peopleIds.includes(p.personId)) : [];
+  // Each person's latest wishes for each month the plan touches.
+  const preferences = req.usePreferences
+    ? (await latestPreferences(pool, req.targetFrom.slice(0, 7), req.targetTo.slice(0, 7))).filter((p) => req.peopleIds.includes(p.personId))
+    : [];
   const askAi = Boolean(readWishes && (text || preferences.length));
   if (askAi && readWishes) {
     let raw: RawWishes;
@@ -435,7 +438,7 @@ export async function planSchedule(
       rooms: rooms.filter((r) => r.isActive).map((r) => r.code),
       from: req.targetFrom,
       to: req.targetTo,
-        preferences: preferences.map((p) => ({ nickname: p.nickname, text: p.text })),
+        preferences: preferences.map((p) => ({ nickname: p.nickname, month: p.month, text: p.text })),
       });
     } catch (err) {
       throw new AiFailed(err);

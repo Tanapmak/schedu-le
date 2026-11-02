@@ -50,10 +50,15 @@ export function AutoSchedule({
     void api.autoDefaults().then((d) => {
       setChosen(new Set(d.peopleIds));
       setAiOn(d.aiPlanner);
-      setTeamPrefs(d.preferences);
       setPerfLives(d.performanceLives);
     });
   }, []);
+
+  // Each person's latest wishes for the months being planned.
+  useEffect(() => {
+    if (!targetFrom || !targetTo || targetTo < targetFrom) return;
+    void api.preferences(targetFrom.slice(0, 7), targetTo.slice(0, 7)).then(setTeamPrefs, () => setTeamPrefs([]));
+  }, [targetFrom, targetTo]);
 
   const changed = () => (setPlan(undefined), setError(''));
   function moveSource(weeks: number) {
@@ -189,8 +194,8 @@ export function AutoSchedule({
               {aiOn && usePrefs && chosenPrefs.length > 0 && (
                 <ul className="ai-team-prefs">
                   {chosenPrefs.map((p) => (
-                    <li key={p.personId}>
-                      <strong>{p.nickname}:</strong> {p.text}
+                    <li key={p.id}>
+                      <strong>{p.nickname}</strong> <span className="muted">({p.month})</span>: {p.text}
                     </li>
                   ))}
                 </ul>

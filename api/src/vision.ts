@@ -46,7 +46,7 @@ const PROMPT = `This is a screenshot or phone photo of a livestream-commerce das
 export function claudeReader(env: NodeJS.ProcessEnv = process.env): ScreenshotReader | undefined {
   if (!env.ANTHROPIC_API_KEY) return undefined;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const model = env.RESULTS_MODEL ?? 'claude-opus-5-5';
+  const model = env.RESULTS_MODEL ?? 'claude-haiku-5-5';
   return async ({ mediaType, base64 }) => {
     const response = await client.messages.parse({
       model,

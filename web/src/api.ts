@@ -372,10 +372,13 @@ export interface AutoPlanRequest {
 }
 
 export interface TeamPreference {
+  id: number;
   personId: number;
   nickname: string;
+  /** YYYY-MM the wishes are for. */
+  month: string;
   text: string;
-  updatedAt: string;
+  createdAt: string;
 }
 
 export interface AutoPlan {
@@ -478,14 +481,15 @@ export const api = {
   copySessions: async (range: { sourceFrom: string; sourceTo: string; targetFrom: string; targetTo: string }, dryRun: boolean) =>
     (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/copy', { ...range, dryRun })).data,
   autoDefaults: async () =>
-    (await request<{ peopleIds: number[]; aiPlanner: boolean; preferences: TeamPreference[]; performanceLives: number }>('GET', '/api/schedule/auto/defaults')).data,
+    (await request<{ peopleIds: number[]; aiPlanner: boolean; performanceLives: number }>('GET', '/api/schedule/auto/defaults')).data,
   loadHistory: async (csv: string) => {
     const { status, data } = await request<{ loaded?: number; skipped?: number; message?: string }>('POST', '/api/performance/history', { csv });
     return status === 200 ? { loaded: data.loaded!, skipped: data.skipped! } : { error: data.message ?? 'failed' };
   },
-  myPreference: async () => (await request<{ text: string; updatedAt: string | null }>('GET', '/api/preferences/me')).data,
-  saveMyPreference: async (text: string) => (await request('PUT', '/api/preferences/me', { text })).status === 200,
-  preferences: async () => (await request<TeamPreference[]>('GET', '/api/preferences')).data,
+  myPreferences: async () => (await request<TeamPreference[]>('GET', '/api/preferences/me')).data,
+  sendMyPreference: async (month: string, text: string) => (await request('POST', '/api/preferences/me', { month, text })).status === 201,
+  /** Everyone's latest wishes per month in [from, to] (managers). */
+  preferences: async (from: string, to = from) => (await request<TeamPreference[]>('GET', `/api/preferences?from=${from}&to=${to}`)).data,
   autoPlan: async (req: AutoPlanRequest) => {
     try {
       const { status, data } = await request<AutoPlan & { error?: string; message?: string }>('POST', '/api/schedule/auto', req);

@@ -9,7 +9,7 @@ import { webDist } from './paths.js';
 import { adjustAttendance, clockIn, clockOut, dayAttendance, decideAttendance, listStudios, myAttendance, saveStudio, type Fix } from './attendance.js';
 import { correctableSessions, decideCorrection, listCorrections, requestCorrection, withdrawCorrection } from './corrections.js';
 import { BadHistory, loadHistory, performanceScores } from './performance.js';
-import { listPreferences, savePreference } from './preferences.js';
+import { addPreference, isMonthKey, latestPreferences, myPreferences } from './preferences.js';
 import { AiFailed, claudeWishReader, defaultPool, planSchedule, type WishReader } from './autoSchedule.js';
 import { copyRows, importRows, importTemplate, readSheet, saveDrafts } from './bulk.js';
 import { payrollWorkbook } from './export.js';
@@ -214,7 +214,6 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.json({
       peopleIds: (await listPeople(pool)).filter(defaultPool).map((p) => p.id),
       aiPlanner: Boolean(readWishes),
-      preferences: await listPreferences(pool),
       performanceLives: lives,
     });
   });
@@ -232,20 +231,24 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
 
   // Everyone's own scheduling wishes. Each person edits theirs; managers read all of them.
   app.get('/api/preferences/me', async (req, res) => {
-    const [mine] = await listPreferences(pool, req.user!.id);
-    res.json({ text: mine?.text ?? '', updatedAt: mine?.updatedAt ?? null });
+    res.json(await myPreferences(pool, req.user!.id));
   });
 
-  app.put('/api/preferences/me', async (req, res) => {
-    if (typeof req.body.text !== 'string') throw new BadRequest('text must be a string');
+  // Each send is a new entry (the history is kept); the month says which month it is for.
+  app.post('/api/preferences/me', async (req, res) => {
+    if (!isMonthKey(req.body.month)) throw new BadRequest('month must be YYYY-MM');
+    if (typeof req.body.text !== 'string' || !req.body.text.trim()) throw new BadRequest('text must not be empty');
     const text = req.body.text.trim();
     if (text.length > 2000) throw new BadRequest('at most 2000 characters');
-    await savePreference(pool, req.user!.id, text);
-    res.json({ ok: true });
+    res.status(201).json({ id: await addPreference(pool, req.user!.id, req.body.month, text) });
   });
 
-  app.get('/api/preferences', requireManager, async (_req, res) => {
-    res.json(await listPreferences(pool));
+  // Managers: everyone's latest entry per month in [from, to] (default: one month).
+  app.get('/api/preferences', requireManager, async (req, res) => {
+    const from = req.query.from ?? req.query.month;
+    const to = req.query.to ?? from;
+    if (!isMonthKey(from) || !isMonthKey(to) || to < from) throw new BadRequest('from/to must be YYYY-MM');
+    res.json(await latestPreferences(pool, from, to));
   });
 
   app.post('/api/schedule/auto', requireManager, async (req, res) => {

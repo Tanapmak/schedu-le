@@ -625,3 +625,8 @@ table.data.bulk td { vertical-align: top; }
 .ai-team-prefs { font-size: 13px; max-height: 160px; overflow: auto; margin: 4px 0 0 26px; padding: 0; list-style: none; }
 .ai-team-prefs li { margin-bottom: 4px; white-space: pre-wrap; }
 .file-link { cursor: pointer; text-decoration: underline; color: var(--red); }
+.prefs-month { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.prefs-team-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.prefs-team-head h2 { margin: 0; }
+.prefs-list li.old { opacity: .6; }
+.prefs-list li .pill { margin-left: 4px; }

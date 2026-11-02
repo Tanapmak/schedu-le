@@ -171,7 +171,7 @@ describe.skipIf(!url)('AI scheduling API', () => {
   let base: string;
   let rooms: Record<string, number>;
   let asked: string[] = [];
-  let prefsSeen: { nickname: string; text: string }[][] = [];
+  let prefsSeen: { nickname: string; month: string; text: string }[][] = [];
 
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url, max: 5 });
@@ -179,7 +179,7 @@ describe.skipIf(!url)('AI scheduling API', () => {
     const client = await pool.connect();
     await migrate(client, migrationsDir);
     client.release();
-    const readWishes = async ({ instructions, preferences }: { instructions: string; preferences: { nickname: string; text: string }[] }): Promise<RawWishes> => {
+    const readWishes = async ({ instructions, preferences }: { instructions: string; preferences: { nickname: string; month: string; text: string }[] }): Promise<RawWishes> => {
       asked.push(instructions);
       prefsSeen.push(preferences);
       return {
@@ -202,7 +202,7 @@ describe.skipIf(!url)('AI scheduling API', () => {
   beforeEach(async () => {
     asked = [];
     prefsSeen = [];
-    await pool.query('TRUNCATE preferences, performance_history');
+    await pool.query('TRUNCATE preference_entries, performance_history');
     await pool.query('TRUNCATE session_staff, sessions, leave_requests, holidays, people RESTART IDENTITY CASCADE');
     await runSqlDir(pool, seedDir);
     await pool.query(`INSERT INTO people (nickname, position, email, app_role) VALUES
@@ -269,14 +269,26 @@ describe.skipIf(!url)('AI scheduling API', () => {
     expect(again.body.rows.every((r: any) => !r.ok && r.problems.includes('room_taken'))).toBe(true);
   });
 
-  it('lets everyone keep their own preferences, and passes them to the AI', async () => {
-    expect((await call('GET', '/api/preferences/me', undefined, 'mc.a@example.com')).body).toEqual({ text: '', updatedAt: null });
-    expect((await call('PUT', '/api/preferences/me', { text: '  อยากได้กะเช้า ไม่เอาวันอาทิตย์  ' }, 'mc.a@example.com')).status).toBe(200);
-    expect((await call('GET', '/api/preferences/me', undefined, 'mc.a@example.com')).body.text).toBe('อยากได้กะเช้า ไม่เอาวันอาทิตย์');
-    expect((await call('GET', '/api/preferences', undefined, 'mc.a@example.com')).status).toBe(403);
-    const all = await call('GET', '/api/preferences');
-    expect(all.body.map((p: any) => [p.nickname, p.text])).toEqual([['MC A', 'อยากได้กะเช้า ไม่เอาวันอาทิตย์']]);
-    expect((await call('PUT', '/api/preferences/me', { text: 'x'.repeat(2001) }, 'mc.a@example.com')).status).toBe(400);
+  it('keeps each person\'s preference history, and uses the latest for each month', async () => {
+    const send = (month: string, text: string, as = 'mc.a@example.com') => call('POST', '/api/preferences/me', { month, text }, as);
+    expect((await call('GET', '/api/preferences/me', undefined, 'mc.a@example.com')).body).toEqual([]);
+    expect((await send('2030-01', '  อยากได้กะเช้า  ')).status).toBe(201);
+    expect((await send('2030-01', 'อยากได้กะเช้า ไม่เอาวันอาทิตย์')).status).toBe(201);
+    expect((await send('2029-12', 'ธันวาขอชั่วโมงเยอะ')).status).toBe(201);
+    // The person sees everything they sent, newest first.
+    const mine = await call('GET', '/api/preferences/me', undefined, 'mc.a@example.com');
+    expect(mine.body.map((e: any) => [e.month, e.text])).toEqual([
+      ['2029-12', 'ธันวาขอชั่วโมงเยอะ'],
+      ['2030-01', 'อยากได้กะเช้า ไม่เอาวันอาทิตย์'],
+      ['2030-01', 'อยากได้กะเช้า'],
+    ]);
+    // Managers see only the latest per person per month.
+    expect((await call('GET', '/api/preferences?month=2030-01', undefined, 'mc.a@example.com')).status).toBe(403);
+    const jan = await call('GET', '/api/preferences?month=2030-01');
+    expect(jan.body.map((p: any) => [p.nickname, p.text])).toEqual([['MC A', 'อยากได้กะเช้า ไม่เอาวันอาทิตย์']]);
+    expect((await send('2030-13', 'x')).status).toBe(400);
+    expect((await send('2030-01', '   ')).status).toBe(400);
+    expect((await send('2030-01', 'x'.repeat(2001))).status).toBe(400);
 
     await call('POST', '/api/sessions', {
       roomId: rooms['TTS 1'],
@@ -291,7 +303,8 @@ describe.skipIf(!url)('AI scheduling API', () => {
     const plan = await call('POST', '/api/schedule/auto', req);
     expect(plan.body.aiUsed).toBe(true); // preferences alone are enough to ask the AI
     expect(plan.body.preferencesUsed).toBe(1);
-    expect(prefsSeen).toEqual([[{ nickname: 'MC A', text: 'อยากได้กะเช้า ไม่เอาวันอาทิตย์' }]]);
+    // Only January's latest entry: the plan is in January, December's wishes don't apply.
+    expect(prefsSeen).toEqual([[{ nickname: 'MC A', month: '2030-01', text: 'อยากได้กะเช้า ไม่เอาวันอาทิตย์' }]]);
     // Unticked, or the person not picked: no AI call.
     await call('POST', '/api/schedule/auto', { ...req, usePreferences: false });
     await call('POST', '/api/schedule/auto', { ...req, peopleIds: [3, 4, 5] });

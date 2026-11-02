@@ -65,7 +65,7 @@ Rules: leave is limited to `leave_quota_per_day` people per position per day (pe
 over with a reason. Approving re-checks the quota and warns about sessions the person would miss. A swap hands a session to
 someone or trades two sessions; approving re-runs the session rules.
 
-Screenshot reading needs `ANTHROPIC_API_KEY` (model `claude-opus-5-5`, override with `RESULTS_MODEL`). Without it the
+Screenshot reading needs `ANTHROPIC_API_KEY` (model `claude-haiku-5-5`, override with `RESULTS_MODEL`). Without it the
 Live results page still works with typed-in numbers. On Cloud Run, keep the key in Secret Manager:
 
 ```sh
@@ -83,7 +83,7 @@ limits: no clashes, nobody on leave (pending or approved) or on a team off day, 
 goals: keep the same crew on a room for a block, share hours towards KPI, full-time staff before interns before cover,
 past performance, and wishes. Claude only turns the admin's free text and each person's own preferences (Preferences
 page, every role) into rules for the solver; without `ANTHROPIC_API_KEY` the solver still runs on the rules alone. Model
-`claude-opus-5-5`, override with `SCHEDULE_MODEL`. Nothing is saved until the admin adds the plan as drafts.
+`claude-haiku-5-5`, override with `SCHEDULE_MODEL`. Nothing is saved until the admin adds the plan as drafts.
 
 Past performance compares each live's GMV per hour with the same room's average that month, per person, room and time of
 day, over the last 12 months: lives recorded in the app, plus the cleaned history sheet (`live_history_cleaned_v2.csv`),
