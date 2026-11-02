@@ -32,7 +32,7 @@ a:hover { color: var(--red); }
   min-height: 60px; padding: 8px 24px; background: #fff; border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; white-space: nowrap; }
-.logo { width: 28px; height: 28px; border-radius: 8px; background: var(--red); }
+.logo { width: 28px; height: 28px; display: block; }
 nav.pills { display: flex; gap: 4px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 nav.pills button {
   border: 0; border-radius: 9999px; padding: 8px 14px; background: transparent; color: var(--gray-dark); white-space: nowrap;
