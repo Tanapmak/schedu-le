@@ -152,7 +152,11 @@ export async function listResults(db: Db, from: Date, to: Date) {
             d.gmv_delta::float8 AS "gmvDelta", d.orders_delta::int AS "ordersDelta", d.views_delta::int AS "viewsDelta",
             p.nickname AS "recordedBy"
        FROM live_result_deltas d LEFT JOIN people p ON p.id = d.recorded_by
-      WHERE d.captured_at >= $1 AND d.captured_at < $2
+       LEFT JOIN sessions s ON s.id = d.session_id
+      -- By the session's time, not when the reading was typed in: a PD often records a session
+      -- after it ended (or the next day), and the reading must still show under that session.
+      WHERE (s.id IS NOT NULL AND s.period && tstzrange($1, $2))
+         OR (s.id IS NULL AND d.captured_at >= $1 AND d.captured_at < $2)
       ORDER BY d.captured_at DESC, d.id DESC`,
     [from, to],
   );
