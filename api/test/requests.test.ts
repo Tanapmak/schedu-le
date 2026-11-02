@@ -16,6 +16,11 @@ const fakeReader: ScreenshotReader = async () => ({
   platform: 'tiktok', account_name: 'TCL', live_started_at: '2030-03-01 10:02', duration_min: 58,
   gmv: 12500, orders: 9, items_sold: 11, views: 4300, avg_view_sec: 41, product_clicks: 320, buyers: 8,
   add_to_cart: 25, ads_cost: null, extra: [{ label: 'GPM', value: '2.9K' }], unsure: [],
+  boxes: [
+    { field: 'gmv', x: 100, y: 50, w: 200, h: 40 },
+    { field: 'extra:GPM', x: 350, y: 380, w: 100, h: 40 }, // runs past the bottom: clamped
+    { field: 'orders', x: 900, y: 10, w: 50, h: 20 }, // off the image: dropped
+  ],
 });
 
 describe.skipIf(!url)('leave, swaps and off days', () => {
@@ -237,7 +242,12 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const png = 'data:image/png;base64,iVBORw0KGgo=';
     expect((await call('POST', '/api/results/read', { sessionId: s, image: png }, MC_B)).status).toBe(403); // not her session
     const read = await call('POST', '/api/results/read', { sessionId: s, image: png }, 'pd.a@example.com');
-    expect(read.body).toMatchObject({ reading: { gmv: 12500 }, liveStartedAt: '2030-03-01T03:02:00.000Z', isNewBroadcast: true });
+    expect(read.body).toMatchObject({ reading: { gmv: 12500 }, liveStartedAt: '2030-03-01T03:02:00.000Z', isNewBroadcast: true, boxes: [] });
+    const sized = await call('POST', '/api/results/read', { sessionId: s, image: png, width: 800, height: 400 }, 'pd.a@example.com');
+    expect(sized.body.boxes).toEqual([
+      { field: 'gmv', x: 0.125, y: 0.125, w: 0.25, h: 0.1 },
+      { field: 'extra:GPM', x: 0.4375, y: 0.95, w: 0.125, h: expect.closeTo(0.05) },
+    ]);
     expect((await call('POST', '/api/results/read', { sessionId: s, image: 'nope' }, 'pd.a@example.com')).status).toBe(400);
 
     const save = (capturedAt: string, gmv: number, orders: number, isNewBroadcast: boolean) =>

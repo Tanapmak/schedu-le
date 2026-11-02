@@ -206,6 +206,9 @@ export interface Reading {
   unsure: string[];
 }
 
+/** Where the AI read a value, as fractions (0..1) of the image. field is a Reading key or "extra:<label>". */
+export interface ReadingBox { field: string; x: number; y: number; w: number; h: number }
+
 export interface ResultRow extends Partial<Record<Metric, number | null>> {
   id: number;
   sessionId: number | null;
@@ -468,8 +471,8 @@ export const api = {
     (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
   removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,
   hours: async (month: string) => (await request<{ month: string; rows: HoursRow[] }>('GET', `/api/hours?month=${month}`)).data.rows,
-  readScreenshot: async (sessionId: number, image: string) =>
-    request<{ reading: Reading; liveStartedAt: string | null; isNewBroadcast: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image }),
+  readScreenshot: async (sessionId: number, image: string, width?: number, height?: number) =>
+    request<{ reading: Reading; boxes: ReadingBox[]; liveStartedAt: string | null; isNewBroadcast: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image, width, height }),
   suggestFlag: async (sessionId: number, liveStartedAt: string | null) =>
     (await request<{ isNewBroadcast: boolean }>('GET', `/api/results/flag?sessionId=${sessionId}${liveStartedAt ? `&liveStartedAt=${encodeURIComponent(liveStartedAt)}` : ''}`)).data.isNewBroadcast,
   saveResult: async (input: ResultInput) => request<{ ok: boolean; id: number; message?: string }>('POST', '/api/results', input),

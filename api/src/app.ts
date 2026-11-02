@@ -15,7 +15,7 @@ import { copyRows, importRows, importTemplate, readSheet, saveDrafts } from './b
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
-import { claudeReader, type ImageMediaType, type ScreenshotReader } from './vision.js';
+import { claudeReader, normalizeBoxes, type ImageMediaType, type ScreenshotReader } from './vision.js';
 import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
@@ -325,9 +325,11 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     if (!opts.readScreenshot) return void res.status(503).json({ error: 'ai_not_configured' });
     const m = typeof req.body.image === 'string' ? IMAGE_DATA_URL.exec(req.body.image) : null;
     if (!m) throw new BadRequest('image must be a base64 data URL (png, jpeg, webp or gif)');
+    const size = (v: unknown) => (Number.isInteger(v) && (v as number) > 0 && (v as number) <= 10000 ? (v as number) : undefined);
+    const width = size(req.body.width), height = size(req.body.height);
     let reading;
     try {
-      reading = await opts.readScreenshot({ mediaType: m[1] as ImageMediaType, base64: m[2] });
+      reading = await opts.readScreenshot({ mediaType: m[1] as ImageMediaType, base64: m[2], width, height });
     } catch (err) {
       console.error('screenshot read failed', err);
       return void res.status(502).json({ error: 'ai_failed' });
@@ -338,7 +340,9 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
       : null;
     const liveStartedAt = started && !Number.isNaN(started.getTime()) ? started : null;
     const isNewBroadcast = await suggestNewBroadcast(pool, session, liveStartedAt);
-    res.json({ reading, liveStartedAt, isNewBroadcast });
+    // Boxes go back as fractions of the image; without its size we cannot place them.
+    const boxes = width && height ? normalizeBoxes(reading.boxes, width, height) : [];
+    res.json({ reading: { ...reading, boxes: undefined }, boxes, liveStartedAt, isNewBroadcast });
   });
 
   // Suggests the Session Flag for a hand-typed reading.
