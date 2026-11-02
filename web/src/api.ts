@@ -181,6 +181,8 @@ export interface Me {
   devUsers?: { nickname: string; email: string; role: Role }[];
   /** False when no AI key is set on the server: results are typed in by hand. */
   aiReader?: boolean;
+  /** False when no AI key is set: AI scheduling still works, without free-text wishes. */
+  aiPlanner?: boolean;
 }
 
 export const METRICS = ['gmv', 'orders', 'itemsSold', 'views', 'avgViewSec', 'productClicks', 'buyers', 'addToCart', 'adsCost', 'durationMin'] as const;
@@ -358,6 +360,33 @@ export interface BulkRow {
   violations: ViolationLike[];
 }
 
+export interface AutoPlanRequest {
+  sourceFrom: string;
+  targetFrom: string;
+  targetTo: string;
+  peopleIds: number[];
+  maxDayHours: number;
+  instructions: string;
+  usePreferences: boolean;
+  usePerformance: boolean;
+}
+
+export interface TeamPreference {
+  personId: number;
+  nickname: string;
+  text: string;
+  updatedAt: string;
+}
+
+export interface AutoPlan {
+  rows: BulkRow[];
+  aiUsed: boolean;
+  wishes: { summary: string[]; notUnderstood: string[] } | null;
+  preferencesUsed: number;
+  performanceLives: number | null;
+  people: { personId: number; plannedHours: number; months: { month: string; hours: number; kpi: number | null; max: number }[] }[];
+}
+
 export async function downloadImportTemplate(): Promise<boolean> {
   const asUser = devUser();
   const res = await fetch('/api/sessions/import-template', { headers: asUser ? { 'x-dev-user': asUser } : {} });
@@ -448,6 +477,25 @@ export const api = {
   clockOut: async (at: Fix) => (await request<ClockResult>('POST', '/api/attendance/clock-out', { ...at })).data,
   copySessions: async (range: { sourceFrom: string; sourceTo: string; targetFrom: string; targetTo: string }, dryRun: boolean) =>
     (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/copy', { ...range, dryRun })).data,
+  autoDefaults: async () =>
+    (await request<{ peopleIds: number[]; aiPlanner: boolean; preferences: TeamPreference[]; performanceLives: number }>('GET', '/api/schedule/auto/defaults')).data,
+  loadHistory: async (csv: string) => {
+    const { status, data } = await request<{ loaded?: number; skipped?: number; message?: string }>('POST', '/api/performance/history', { csv });
+    return status === 200 ? { loaded: data.loaded!, skipped: data.skipped! } : { error: data.message ?? 'failed' };
+  },
+  myPreference: async () => (await request<{ text: string; updatedAt: string | null }>('GET', '/api/preferences/me')).data,
+  saveMyPreference: async (text: string) => (await request('PUT', '/api/preferences/me', { text })).status === 200,
+  preferences: async () => (await request<TeamPreference[]>('GET', '/api/preferences')).data,
+  autoPlan: async (req: AutoPlanRequest) => {
+    try {
+      const { status, data } = await request<AutoPlan & { error?: string; message?: string }>('POST', '/api/schedule/auto', req);
+      return status === 200 ? { plan: data as AutoPlan } : { error: data.message ?? data.error ?? 'failed' };
+    } catch {
+      return { error: 'ai_failed' };
+    }
+  },
+  autoSave: async (sessions: { roomId: number; start: string; end: string; staff: { personId: number; role: StaffRole }[] }[]) =>
+    (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/schedule/auto/save', { sessions })).data,
   importSessions: async (filename: string, data: string, dryRun: boolean) =>
     (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/import', { filename, data, dryRun })).data,
   corrections: async () => (await request<Correction[]>('GET', '/api/attendance/corrections')).data,

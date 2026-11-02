@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPo
 import { api, type Board as BoardData, type HoursRow, type Person, type Room, type Session, type User, isManager } from './api';
 import { t, violationMessage, type Lang } from './i18n';
 import { MonthView, addMonths, monthGrid } from './MonthView';
+import { AutoSchedule } from './AutoSchedule';
 import { BulkTools } from './BulkTools';
 import { SessionForm, type FormTarget } from './SessionForm';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf, todayBkk, liveDate } from './time';
@@ -56,6 +57,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
   const [date, setDate] = useState(todayBkk());
   const [data, setData] = useState<BoardData>();
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [failed, setFailed] = useState(false);
   const [form, setForm] = useState<FormTarget>();
   const [preview, setPreview] = useState<Preview>();
@@ -247,6 +249,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
                 {drafts} {t(lang, 'draftCount')}
               </span>
             )}
+            <button onClick={() => setAiOpen(true)}>{t(lang, 'aiButton')}</button>
             <button onClick={() => setBulkOpen(true)}>{t(lang, 'bulkButton')}</button>
             <button onClick={() => setForm({ mode: 'new', date, start: '10:00', end: '12:00' })}>{t(lang, 'addSession')}</button>
             <button className="primary" disabled={drafts === 0} onClick={publish}>
@@ -384,6 +387,23 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
           onSaved={(id) => {
             setForm(undefined);
             void afterSave(id);
+          }}
+        />
+      )}
+      {aiOpen && (
+        <AutoSchedule
+          lang={lang}
+          date={date}
+          rooms={rooms}
+          people={people}
+          onClose={() => setAiOpen(false)}
+          onDone={(first) => {
+            setAiOpen(false);
+            if (first) {
+              setDate(first);
+              setView('week');
+            }
+            load();
           }}
         />
       )}

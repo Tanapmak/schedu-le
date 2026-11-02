@@ -41,11 +41,11 @@ export async function saveDrafts(pool: pg.Pool, rows: BulkRow[], opts: { dryRun:
     await client.query('BEGIN');
     for (const r of rows) {
       const base = { row: r.row, problems: r.problems, violations: [] as Violation[] };
+      const shown = r.input && { start: r.input.start.toISOString(), end: r.input.end.toISOString(), roomId: r.input.roomId, staff: r.input.staff };
       if (!r.input || r.problems.length) {
-        out.push({ ...base, ok: false });
+        out.push({ ...base, ...shown, ok: false });
         continue;
       }
-      const shown = { start: r.input.start.toISOString(), end: r.input.end.toISOString(), roomId: r.input.roomId, staff: r.input.staff };
       const violations = await checkAgainstDb(client, { ...r.input, status: 'draft' });
       if (hasErrors(violations)) {
         out.push({ ...base, ...shown, ok: false, violations });

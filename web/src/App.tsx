@@ -9,14 +9,15 @@ import { OffDaysPage } from './OffDays';
 import { MySchedule } from './MySchedule';
 import { ResultsPage } from './Results';
 import { TeamPage } from './Team';
+import { PreferencesPage } from './Preferences';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 // Pages each role sees, in nav order. MC/PD get the first four in the phone's bottom bar too.
 // Operation runs everything the master admin does except the team list.
-const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'attendance', 'hours'];
+const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'attendance', 'hours', 'prefsNav'];
 const adminPages: StringKey[] = [...operationPages, 'team'];
-const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'hours'];
-const viewerPages: StringKey[] = ['schedule', 'hours'];
+const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'hours', 'prefsNav'];
+const viewerPages: StringKey[] = ['schedule', 'hours', 'prefsNav'];
 /** Phone bottom bar: this many pages, then a "More" button for the rest. */
 const BOTTOM_SLOTS = 4;
 const pagesFor = (role?: Role) =>
@@ -216,6 +217,8 @@ export function App() {
           <TeamPage lang={lang} me={me.user} onChanged={() => void api.people().then(setPeople)} />
         ) : page === 'clockNav' && rooms && me ? (
           <ClockIn lang={lang} rooms={rooms} />
+        ) : page === 'prefsNav' && me ? (
+          <PreferencesPage lang={lang} user={me.user} />
         ) : page === 'leave' && rooms && people && me ? (
           <LeavePage lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : (

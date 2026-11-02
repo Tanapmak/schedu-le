@@ -8,6 +8,9 @@ import { BadRequest, parseDate, parseId, parseSessionInput } from './input.js';
 import { webDist } from './paths.js';
 import { adjustAttendance, clockIn, clockOut, dayAttendance, decideAttendance, listStudios, myAttendance, saveStudio, type Fix } from './attendance.js';
 import { correctableSessions, decideCorrection, listCorrections, requestCorrection, withdrawCorrection } from './corrections.js';
+import { BadHistory, loadHistory, performanceScores } from './performance.js';
+import { listPreferences, savePreference } from './preferences.js';
+import { AiFailed, claudeWishReader, defaultPool, planSchedule, type WishReader } from './autoSchedule.js';
 import { copyRows, importRows, importTemplate, readSheet, saveDrafts } from './bulk.js';
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
@@ -29,12 +32,15 @@ const MAX_RANGE_DAYS = 62;
 export interface AppOptions {
   /** Reads live-dashboard screenshots. Undefined when no AI key is set: results are typed in by hand. */
   readScreenshot?: ScreenshotReader;
+  /** Turns the admin's free-text scheduling wishes into rules. Undefined when no AI key is set. */
+  readWishes?: WishReader;
 }
 
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
 
 export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: AppOptions = { readScreenshot: claudeReader() }) {
   const app = express();
+  const readWishes = 'readWishes' in opts ? opts.readWishes : claudeWishReader();
   // Screenshots arrive as base64 data URLs (the web app shrinks them to ~2000 px first).
   app.use(express.json({ limit: '8mb' }));
 
@@ -56,7 +62,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
       auth.mode === 'dev'
         ? (await pool.query(`SELECT nickname, email, app_role AS role FROM people WHERE is_active AND email IS NOT NULL ORDER BY id`)).rows
         : undefined;
-    res.json({ user: req.user, mode: auth.mode, devUsers, aiReader: Boolean(opts.readScreenshot) });
+    res.json({ user: req.user, mode: auth.mode, devUsers, aiReader: Boolean(opts.readScreenshot), aiPlanner: Boolean(readWishes) });
   });
 
   app.get('/api/rooms', async (_req, res) => {
@@ -158,6 +164,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new BadRequest(`${name} must be YYYY-MM-DD`);
     return v;
   };
+  const addDaysIso = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
   const spanDays = (a: string, b: string) => (Date.parse(b) - Date.parse(a)) / 86_400_000 + 1;
 
   app.post('/api/sessions/copy', requireManager, async (req, res) => {
@@ -198,6 +205,84 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     if (sheet.length > 1000) throw new BadRequest('at most 1000 rows per file');
     const rows = await importRows(pool, sheet);
     res.json({ rows: await saveDrafts(pool, rows, { dryRun: req.body.dryRun !== false, actorId: req.user?.id }) });
+  });
+
+  // AI scheduling: slots from a pattern week, MC/PD chosen by the solver, wishes read by Claude.
+  // Nothing is saved here; the admin checks the plan, then sends the sessions to /save.
+  app.get('/api/schedule/auto/defaults', requireManager, async (_req, res) => {
+    const { lives } = await performanceScores(pool);
+    res.json({
+      peopleIds: (await listPeople(pool)).filter(defaultPool).map((p) => p.id),
+      aiPlanner: Boolean(readWishes),
+      preferences: await listPreferences(pool),
+      performanceLives: lives,
+    });
+  });
+
+  // Past lives from before the app (the cleaned history CSV), replacing what was loaded before.
+  app.post('/api/performance/history', requireManager, async (req, res) => {
+    if (typeof req.body.csv !== 'string' || !req.body.csv.trim()) throw new BadRequest('send the CSV text as csv');
+    try {
+      res.json(await loadHistory(pool, req.body.csv));
+    } catch (err) {
+      if (err instanceof BadHistory) throw new BadRequest(err.message);
+      throw err;
+    }
+  });
+
+  // Everyone's own scheduling wishes. Each person edits theirs; managers read all of them.
+  app.get('/api/preferences/me', async (req, res) => {
+    const [mine] = await listPreferences(pool, req.user!.id);
+    res.json({ text: mine?.text ?? '', updatedAt: mine?.updatedAt ?? null });
+  });
+
+  app.put('/api/preferences/me', async (req, res) => {
+    if (typeof req.body.text !== 'string') throw new BadRequest('text must be a string');
+    const text = req.body.text.trim();
+    if (text.length > 2000) throw new BadRequest('at most 2000 characters');
+    await savePreference(pool, req.user!.id, text);
+    res.json({ ok: true });
+  });
+
+  app.get('/api/preferences', requireManager, async (_req, res) => {
+    res.json(await listPreferences(pool));
+  });
+
+  app.post('/api/schedule/auto', requireManager, async (req, res) => {
+    const request = {
+      sourceFrom: isoDate(req.body.sourceFrom, 'sourceFrom'),
+      targetFrom: isoDate(req.body.targetFrom, 'targetFrom'),
+      targetTo: isoDate(req.body.targetTo, 'targetTo'),
+      peopleIds: Array.isArray(req.body.peopleIds) ? req.body.peopleIds.map((v: unknown, i: number) => parseId(v, `peopleIds[${i}]`)) : [],
+      maxDayHours: Number(req.body.maxDayHours ?? 8),
+      instructions: typeof req.body.instructions === 'string' ? req.body.instructions.slice(0, 4000) : '',
+      usePreferences: req.body.usePreferences !== false,
+      usePerformance: req.body.usePerformance !== false,
+    };
+    const dst = spanDays(request.targetFrom, request.targetTo);
+    if (dst < 1 || dst > MAX_RANGE_DAYS) throw new BadRequest('target must be 1-62 days');
+    if (request.targetFrom <= addDaysIso(request.sourceFrom, 6) && request.targetTo >= request.sourceFrom) throw new BadRequest('target must not overlap the pattern week');
+    if (!Number.isFinite(request.maxDayHours) || request.maxDayHours < 2 || request.maxDayHours > 16) throw new BadRequest('maxDayHours must be 2-16');
+    if (request.peopleIds.length === 0) throw new BadRequest('pick at least one person');
+    let plan;
+    try {
+      plan = await planSchedule(pool, request, readWishes);
+    } catch (err) {
+      if (err instanceof AiFailed) {
+        console.error('AI scheduling failed', err.cause);
+        return void res.status(502).json({ error: 'ai_failed' });
+      }
+      throw err;
+    }
+    const rows = await saveDrafts(pool, plan.rows, { dryRun: true });
+    res.json({ ...plan, rows });
+  });
+
+  app.post('/api/schedule/auto/save', requireManager, async (req, res) => {
+    if (!Array.isArray(req.body.sessions) || req.body.sessions.length === 0) throw new BadRequest('sessions must be a non-empty array');
+    if (req.body.sessions.length > 2000) throw new BadRequest('at most 2000 sessions');
+    const rows = req.body.sessions.map((s: unknown, i: number) => ({ row: i + 1, problems: [], input: parseSessionInput(s) }));
+    res.json({ rows: await saveDrafts(pool, rows, { dryRun: false, actorId: req.user?.id }) });
   });
 
   // Publishes every draft that starts in [from, to).
