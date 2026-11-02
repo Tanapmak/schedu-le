@@ -7,8 +7,8 @@ import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, minutesFrom, mondayOf
 
 type View = 'day' | 'week' | 'month';
 
-// Day view spans 08:00 to 02:00 the next morning; late lives run past midnight.
-const DAY_START_H = 8;
+// Day view spans 06:00 to 02:00 the next morning; early lives start at 06:00, late ones run past midnight.
+const DAY_START_H = 6;
 const DAY_END_H = 26;
 const SPAN_MIN = (DAY_END_H - DAY_START_H) * 60;
 const pad = (n: number) => String(n).padStart(2, '0');
