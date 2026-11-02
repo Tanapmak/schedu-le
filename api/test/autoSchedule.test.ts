@@ -324,6 +324,11 @@ describe.skipIf(!url)('AI scheduling API', () => {
     const loaded = await call('POST', '/api/performance/history', { csv: lines.join('\n') });
     expect(loaded.body).toEqual({ loaded: 41, skipped: 1 });
     expect((await call('POST', '/api/performance/history', { csv: 'foo,bar\n1,2' })).status).toBe(400);
+    // The older v1 sheet names the people columns mc_clean_1 / pd_clean_1.
+    const v1 = 'account,date,start_time,duration_hours,mc_clean_1,mc_clean_2,pd_clean_1,pd_clean_2,session_gmv\nTTS 1,2029-12-01,10:00:00,2,MC A,,PD A,,100';
+    expect((await call('POST', '/api/performance/history', { csv: v1 })).body).toEqual({ loaded: 1, skipped: 0 });
+    expect((await pool.query(`SELECT mc, pd FROM performance_history`)).rows).toEqual([{ mc: ['MC A'], pd: ['PD A'] }]);
+    await call('POST', '/api/performance/history', { csv: lines.join('\n') });
 
     await call('POST', '/api/sessions', {
       roomId: rooms['TTS 1'],

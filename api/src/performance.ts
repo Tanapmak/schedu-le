@@ -117,13 +117,16 @@ export function parseCsv(text: string): string[][] {
 
 export class BadHistory extends Error {}
 
+const ALIASES: Record<string, string> = { mc_1: 'mc_clean_1', mc_2: 'mc_clean_2', pd_1: 'pd_clean_1', pd_2: 'pd_clean_2', campaign_level: 'campaign_type' };
 const NEEDED = ['account', 'date', 'start_time', 'duration_hours', 'mc_1', 'pd_1', 'session_gmv'] as const;
 
 /** Replaces performance_history with the sheet's rows. Returns how many were loaded and skipped. */
 export async function loadHistory(pool: pg.Pool, csv: string): Promise<{ loaded: number; skipped: number }> {
   const [header, ...data] = parseCsv(csv);
   if (!header) throw new BadHistory('empty file');
-  const col = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  const col: Record<string, number> = Object.fromEntries(header.map((h, i) => [h.trim(), i]));
+  // The first cleaned sheet (v1) named some columns differently; accept both.
+  for (const [name, old] of Object.entries(ALIASES)) if (col[name] === undefined && col[old] !== undefined) col[name] = col[old];
   const missing = NEEDED.filter((k) => col[k] === undefined);
   if (missing.length) throw new BadHistory(`missing columns: ${missing.join(', ')}`);
   const get = (r: string[], k: string) => (col[k] === undefined ? '' : (r[col[k]] ?? '').trim());
