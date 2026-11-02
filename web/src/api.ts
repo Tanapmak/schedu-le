@@ -345,6 +345,30 @@ export function setDevUser(email: string) {
 }
 
 /** Downloads the month's payroll workbook (admin only). */
+/** One row of a copy or import: what would be (or was) created, or why it was skipped. */
+export interface BulkRow {
+  row: number;
+  ok: boolean;
+  id?: number;
+  start?: string;
+  end?: string;
+  roomId?: number;
+  staff?: { personId: number; role: StaffRole }[];
+  problems: string[];
+  violations: ViolationLike[];
+}
+
+export async function downloadImportTemplate(): Promise<boolean> {
+  const asUser = devUser();
+  const res = await fetch('/api/sessions/import-template', { headers: asUser ? { 'x-dev-user': asUser } : {} });
+  if (!res.ok) return false;
+  const url = URL.createObjectURL(await res.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'schedule-import-template.xlsx' });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
+}
+
 export async function downloadPayroll(month: string): Promise<boolean> {
   const asUser = devUser();
   const res = await fetch(`/api/export/payroll?month=${month}`, { headers: asUser ? { 'x-dev-user': asUser } : {} });
@@ -422,6 +446,10 @@ export const api = {
   myAttendance: async () => (await request<MyAttendance>('GET', '/api/attendance/me')).data,
   clockIn: async (at: Fix, reason?: string) => (await request<ClockResult>('POST', '/api/attendance/clock-in', { ...at, reason })).data,
   clockOut: async (at: Fix) => (await request<ClockResult>('POST', '/api/attendance/clock-out', { ...at })).data,
+  copySessions: async (range: { sourceFrom: string; sourceTo: string; targetFrom: string; targetTo: string }, dryRun: boolean) =>
+    (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/copy', { ...range, dryRun })).data,
+  importSessions: async (filename: string, data: string, dryRun: boolean) =>
+    (await request<{ rows?: BulkRow[]; message?: string }>('POST', '/api/sessions/import', { filename, data, dryRun })).data,
   corrections: async () => (await request<Correction[]>('GET', '/api/attendance/corrections')).data,
   requestCorrection: async (input: { sessionId: number; clockInAt: string | null; clockOutAt: string | null; reason: string }, at: Fix) =>
     (await request<{ ok: true; id: number } | { ok: false; error: string; message?: string }>('POST', '/api/attendance/corrections', { ...input, ...at })).data,

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Schedu-le">
+  <!-- Schedu-le: a calendar page with a "live" play button, in TCL red -->
+  <rect width="64" height="64" rx="14" fill="#e60012"/>
+  <rect x="12" y="15" width="40" height="36" rx="6" fill="#fff"/>
+  <rect x="12" y="15" width="40" height="10" rx="5" fill="#fff"/>
+  <path d="M12 25h40" stroke="#e60012" stroke-width="2.5"/>
+  <rect x="20" y="9.5" width="4.5" height="11" rx="2.25" fill="#fff" stroke="#e60012" stroke-width="2"/>
+  <rect x="39.5" y="9.5" width="4.5" height="11" rx="2.25" fill="#fff" stroke="#e60012" stroke-width="2"/>
+  <path d="M28 31.5v13.5a1 1 0 0 0 1.5.87l11.2-6.75a1 1 0 0 0 0-1.73L29.5 30.63A1 1 0 0 0 28 31.5z" fill="#e60012"/>
+</svg>

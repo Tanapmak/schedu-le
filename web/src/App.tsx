@@ -94,7 +94,7 @@ export function App() {
     <div className={`shell${me && pagesFor(me.user.role) === teamPages ? ' has-bottom-nav' : ''}`}>
       <header className="topbar">
         <span className="brand">
-          <span className="logo" aria-hidden="true" />
+          <img className="logo" src="/logo.svg" alt="" aria-hidden="true" />
           Schedu-le
         </span>
         <nav className="pills">
