@@ -9,6 +9,7 @@ export function PreferencesPage({ lang, user }: { lang: Lang; user: User }) {
   const [text, setText] = useState('');
   const [saved, setSaved] = useState<{ text: string; at: string | null }>();
   const [busy, setBusy] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [team, setTeam] = useState<TeamPreference[]>();
   const manager = isManager(user.role);
 
@@ -22,6 +23,8 @@ export function PreferencesPage({ lang, user }: { lang: Lang; user: User }) {
     try {
       if (await api.saveMyPreference(text)) {
         setSaved({ text: text.trim(), at: new Date().toISOString() });
+        setText(text.trim());
+        setJustSaved(true);
         if (manager) setTeam(await api.preferences());
       }
     } finally {
@@ -42,9 +45,10 @@ export function PreferencesPage({ lang, user }: { lang: Lang; user: User }) {
       </div>
 
       <section className="card prefs-card">
-        <textarea rows={6} maxLength={MAX} value={text} placeholder={t(lang, 'prefsPlaceholder')} onChange={(e) => setText(e.target.value)} />
+        <textarea rows={6} maxLength={MAX} value={text} disabled={saved === undefined} placeholder={t(lang, 'prefsPlaceholder')} onChange={(e) => (setText(e.target.value), setJustSaved(false))} />
         <div className="row-actions">
           <span className="hint">
+            {justSaved && <strong className="ok-text">{t(lang, 'prefsSaved')} · </strong>}
             {saved?.at && `${t(lang, 'prefsSavedAt').replace('{t}', when(saved.at))} · `}
             {text.length}/{MAX}
           </span>
@@ -53,6 +57,19 @@ export function PreferencesPage({ lang, user }: { lang: Lang; user: User }) {
           </button>
         </div>
       </section>
+
+      {!manager && saved?.text && saved.at && (
+        <section className="card">
+          <h2>{t(lang, 'prefsMine')}</h2>
+          <ul className="prefs-list">
+            <li>
+              <span className="hint">{when(saved.at)}</span>
+              <p>{saved.text}</p>
+            </li>
+          </ul>
+          <p className="hint">{t(lang, 'prefsMineHint')}</p>
+        </section>
+      )}
 
       {manager && (
         <section className="card">
