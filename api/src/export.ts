@@ -39,6 +39,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
   const hours = await hoursReport(db, month, new Date(8.64e15));
   const live = await monthSummary(db, month, now, { id: 0, role: 'admin' });
   const missingOf = (personId: number) => live.byPerson.find((p) => p.personId === personId);
+  const liveOf = new Map(live.sessions.map((x) => [x.id, x]));
 
   // One line per person per session that earns hours.
   const lines = sessions.flatMap((s) =>
@@ -70,6 +71,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'GMV as PD (screen, pre-refund)', key: 'gmvPd', width: 28, numFmt: '#,##0' },
     { header: 'Results not recorded', key: 'missing', width: 20 },
     { header: 'Forgot-to-record deduction (THB)', key: 'deduction', width: 30, numFmt: '#,##0' },
+    { header: 'At risk if not recorded by cut-off (THB)', key: 'atRisk', width: 34, numFmt: '#,##0' },
   ]);
   for (const h of hours) {
     if (h.employment === 'guest' || h.totalHours === 0) continue;
@@ -91,6 +93,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       gmvPd: round2(gmv('pd')),
       missing: missingOf(h.personId)?.missing ?? 0,
       deduction: missingOf(h.personId)?.deduction ?? 0,
+      atRisk: missingOf(h.personId)?.pendingDeduction ?? 0,
     });
   }
   summary.addRow([]);
@@ -121,6 +124,8 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Cancel reason', key: 'reason', width: 20 },
     { header: 'GMV (screen)', key: 'gmv', width: 14, numFmt: '#,##0' },
     { header: 'Orders', key: 'orders', width: 9 },
+    { header: 'Result', key: 'result', width: 11 },
+    { header: 'Forgot-to-record (THB)', key: 'deduction', width: 22, numFmt: '#,##0' },
     { header: 'Session ID', key: 'id', width: 10 },
   ];
   const detailRow = (l: (typeof lines)[number]) => ({
@@ -138,6 +143,9 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     reason: l.s.cancelReason ?? '',
     gmv: l.result ? round2(l.result.gmv) : undefined,
     orders: l.result?.orders,
+    result: liveOf.get(l.s.id)?.status ?? '',
+    // Charged on the PD's line only, once results have closed.
+    deduction: liveOf.get(l.s.id)?.fined && liveOf.get(l.s.id)!.responsible.includes(l.st.personId) ? FORGOT_RECORD_DEDUCTION : undefined,
     id: l.s.id,
   });
   const detail = wb.addWorksheet('Sessions');

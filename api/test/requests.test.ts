@@ -364,6 +364,9 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const pdA = wb.getWorksheet('Summary')!.getRows(2, 5)!.find((r) => r.getCell(1).value === 'PD A')!;
     expect([pdA.getCell('N').value, pdA.getCell('O').value]).toEqual([2, 1000]);
     expect(wb.getWorksheet('Missing results')!.rowCount).toBe(3);
+    // Sessions sheet: the result status on every line, the 500 only on the PD's line.
+    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('F').value, r.getCell('O').value, r.getCell('P').value ?? null]);
+    expect(lines).toEqual(expect.arrayContaining([['PD A', 'missing', 500], ['MC A', 'missing', null], ['PD A', 'late', 500]]));
   });
 
   it('exports the month for payroll, without guests, with a freelance sheet', async () => {
