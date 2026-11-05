@@ -8,15 +8,16 @@ import { LeavePage } from './LeavePage';
 import { OffDaysPage } from './OffDays';
 import { MySchedule } from './MySchedule';
 import { ResultsPage } from './Results';
+import { LivePerformancePage } from './LivePerformance';
 import { TeamPage } from './Team';
 import { PreferencesPage } from './Preferences';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 // Pages each role sees, in nav order. MC/PD get the first four in the phone's bottom bar too.
 // Operation runs everything the master admin does except the team list.
-const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'attendance', 'hours', 'prefsNav'];
+const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'livePerf', 'attendance', 'hours', 'prefsNav'];
 const adminPages: StringKey[] = [...operationPages, 'team'];
-const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'hours', 'prefsNav'];
+const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'livePerf', 'hours', 'prefsNav'];
 const viewerPages: StringKey[] = ['schedule', 'hours', 'prefsNav'];
 /** Phone bottom bar: this many pages, then a "More" button for the rest. */
 const BOTTOM_SLOTS = 4;
@@ -209,6 +210,8 @@ export function App() {
           />
         ) : page === 'results' && rooms && people && me ? (
           <ResultsPage lang={lang} rooms={rooms} people={people} user={me.user} aiReader={Boolean(me.aiReader)} />
+        ) : page === 'livePerf' && me ? (
+          <LivePerformancePage lang={lang} user={me.user} />
         ) : page === 'offDays' && isManager(me?.user.role) ? (
           <OffDaysPage lang={lang} />
         ) : page === 'attendance' && people && rooms && isManager(me?.user.role) ? (

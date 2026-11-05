@@ -59,7 +59,8 @@ that has the "IAP-secured Web App User" role). Team changes are written to `audi
 | My schedule | Upcoming sessions, hours this month vs KPI, request leave or a swap, my requests. |
 | Leave | Admin: approve leave and swaps, set team off days (they block the schedule), see all leave. |
 | Hours | Hours per person per month. Only `full_time` staff are compared with KPI. Admin downloads the payroll Excel here. |
-| Live results | PD pastes or photographs the live dashboard; Claude reads the numbers; the PD checks and confirms. |
+| Live results | PD pastes or photographs the live dashboard; Claude reads the numbers; the PD checks and confirms. Readings can be edited (new version, old one kept). |
+| Live performance | The month's GMV, GMV/h, by room and by person, every session's result status and forgot-to-record deductions. The team sees only their own sessions. |
 
 Rules: leave is limited to `leave_quota_per_day` people per position per day (pending + approved); urgent leave may go
 over with a reason. Approving re-checks the quota and warns about sessions the person would miss. A swap hands a session to
@@ -89,8 +90,19 @@ Past performance compares each live's GMV per hour with the same room's average 
 day, over the last 12 months: lives recorded in the app, plus the cleaned history sheet (`live_history_cleaned_v2.csv`),
 which an admin loads once from the AI scheduling window ("นำเข้าประวัติไลฟ์ (CSV)"; loading again replaces it).
 
-The payroll workbook (`/api/export/payroll?month=YYYY-MM`) has three sheets: Summary (hours, KPI, GMV per person),
-Sessions (every counted line) and Freelance (each freelancer's lives with totals). It holds no pay rates; guests are left out.
+Live results rules (v2.1, `api/src/results.ts`):
+- Session Flag: a reading only continues the session in the same room that ends exactly when this one starts, and only if
+  that session has a result. After a gap it is always a new broadcast (the server enforces this even if "Continues" is sent).
+- Edits save a new version and keep the old one; if the flag changes, later readings of the broadcast follow, so their
+  deltas stay right. MC/PD may edit or remove up to 7 days after the session ends; admin and operation have no limit.
+- Results of month M can be back-recorded until the 25th of month M+1 (00:00 Bangkok). After that MC/PD cannot record;
+  each session still without a result (or first recorded after the cut-off by an admin) costs its PD 500 THB (never the MC:
+  recording is the PD's job).
+- The screenshot is stored with each reading (`live_result_images`) so an edit can show it.
+
+The payroll workbook (`/api/export/payroll?month=YYYY-MM`) has four sheets: Summary (hours, KPI, GMV per person, results not
+recorded, forgot-to-record deduction), Sessions (every counted line), Freelance (each freelancer's lives with totals) and
+Missing results. It holds no pay rates; guests are left out.
 
 ## Checks
 
