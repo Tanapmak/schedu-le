@@ -99,7 +99,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     'KPI applies to full-time staff only, on hours in their own position. Hours in the other role (a PD hosting as MC) have KPI 0 and are listed apart.',
     'GMV comes from PD screenshots (before refunds). Use post-refund GMV from the order export for commission.',
     'Guests (retail trainers) are left out. Freelancers are listed per live on the Freelance sheet.',
-    `Results close on ${dateCell(live.cutoff)} (the 25th of the next month). Each session still without a result then costs its PD (or the MC when there is no PD) ${FORGOT_RECORD_DEDUCTION} THB.` +
+    `Results close on ${dateCell(live.cutoff)} (the 25th of the next month). Each session still without a result then costs its PD ${FORGOT_RECORD_DEDUCTION} THB (never the MC).` +
       (live.closed ? '' : ' Not closed yet at export time: the deduction column is 0 until then; see the Missing results sheet.'),
   ]) {
     summary.addRow([note]).font = { italic: true, color: { argb: 'FF666666' } };

@@ -584,8 +584,8 @@ const strings = {
     zh: '无法删除：有后续记录延续此条，请先删除后续记录。',
   },
   recordClosed: {
-    th: 'ปิดรับบันทึกย้อนหลังแล้ว (หลังวันที่ 25 ของเดือนถัดไป) รอบนี้ถูกหัก 500 บาท ค่าลืมบันทึก ติดต่อแอดมิน',
-    en: 'Back-recording is closed (after the 25th of the next month). This session costs a 500 THB forgot-to-record deduction. Ask an admin.',
+    th: 'ปิดรับบันทึกย้อนหลังแล้ว (หลังวันที่ 25 ของเดือนถัดไป) PD ของรอบนี้ถูกหัก 500 บาท ค่าลืมบันทึก ติดต่อแอดมิน',
+    en: 'Back-recording is closed (after the 25th of the next month). The PD of this session gets a 500 THB forgot-to-record deduction. Ask an admin.',
     zh: '补录已截止（次月 25 日后），本场扣除 500 泰铢漏记费，请联系管理员。',
   },
   alreadyEdited: { th: 'มีคนแก้ไขบันทึกนี้ไปแล้ว โหลดใหม่แล้วลองอีกครั้ง', en: 'Someone already edited this reading. Reload and try again.', zh: '此记录已被他人编辑，请刷新后重试。' },
@@ -643,9 +643,9 @@ const strings = {
   myPerformance: { th: 'ของฉัน', en: 'Mine', zh: '我的' },
   deduction: { th: 'หัก (฿)', en: 'Deduction (฿)', zh: '扣款 (฿)' },
   deductionNote: {
-    th: 'หักค่าลืมบันทึก {amount} บาท/รอบ ให้ PD ของรอบนั้น (ถ้าไม่มี PD หัก MC) ตัวเลขในวงเล็บ = จะโดนหักถ้ายังไม่บันทึกก่อนวันปิดรับ',
-    en: 'Forgot-to-record: {amount} THB per session, charged to its PD (the MC when there is no PD). In brackets: will be charged if still missing at the cut-off.',
-    zh: '漏记费：每场 {amount} 泰铢，由该场 PD 承担（无 PD 时由主播承担）。括号内：截止时仍未记录将扣除。',
+    th: 'หักค่าลืมบันทึก {amount} บาท/รอบ จาก PD ของรอบนั้น (ไม่หัก MC) ตัวเลขในวงเล็บ = จะโดนหักถ้ายังไม่บันทึกก่อนวันปิดรับ',
+    en: 'Forgot-to-record: {amount} THB per session, charged to its PD (never the MC). In brackets: will be charged if still missing at the cut-off.',
+    zh: '漏记费：每场 {amount} 泰铢，由该场 PD 承担（不扣主播）。括号内：截止时仍未记录将扣除。',
   },
   sessionList: { th: 'รายการรอบไลฟ์', en: 'Sessions', zh: '场次列表' },
   all: { th: 'ทั้งหมด', en: 'All', zh: '全部' },

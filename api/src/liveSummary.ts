@@ -28,7 +28,7 @@ export interface SummarySession {
   readings: number;
   edited: boolean;
   status: ResultStatus;
-  /** People fined if this result is (or stays) missing: the PD, or the MC when there is no PD. */
+  /** People fined if this result is (or stays) missing: the session's PD (recording is the PD's job; never the MC). */
   responsible: number[];
   /** True once the cut-off has passed and the session is missing or late. */
   fined: boolean;
@@ -64,9 +64,9 @@ export async function monthSummary(db: Db, month: string, now: Date, viewer: { i
         : m && m.n > 0 ? (m.first >= cutoff ? 'late' : 'recorded')
           : s.end > now ? 'upcoming'
             : 'missing';
-    const paid = staff.filter((x) => people.get(x.personId)?.employment !== 'guest');
-    const pds = paid.filter((x) => x.role === 'pd');
-    const responsible = (pds.length ? pds : paid.filter((x) => x.role === 'mc')).map((x) => x.personId);
+    const responsible = staff
+      .filter((x) => x.role === 'pd' && people.get(x.personId)?.employment !== 'guest')
+      .map((x) => x.personId);
     const r = results.get(s.id);
     return {
       id: s.id,

@@ -352,6 +352,8 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect(sum.sessions.map((s: { status: string; fined: boolean }) => [s.status, s.fined])).toEqual([['missing', true], ['late', true]]);
     expect(sum.byPerson.find((p: { nickname: string }) => p.nickname === 'PD A')).toMatchObject({ missing: 2, deduction: 1000 });
     expect(sum.byPerson.find((p: { nickname: string }) => p.nickname === 'MC A')).toMatchObject({ missing: 0, deduction: 0, gmvMc: 700 });
+    // Recording is the PD's job: the MC is never fined, even when the session has no PD.
+    expect(sum.sessions[0].responsible).toEqual([3]);
     // The team sees only their own sessions and row.
     const mine = (await call('GET', '/api/results/summary?month=2020-05', undefined, 'mc.b@example.com')).body;
     expect(mine).toMatchObject({ totals: { sessions: 0 }, byPerson: [] });

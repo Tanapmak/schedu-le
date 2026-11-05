@@ -96,8 +96,8 @@ Live results rules (v2.1, `api/src/results.ts`):
 - Edits save a new version and keep the old one; if the flag changes, later readings of the broadcast follow, so their
   deltas stay right. MC/PD may edit or remove up to 7 days after the session ends; admin and operation have no limit.
 - Results of month M can be back-recorded until the 25th of month M+1 (00:00 Bangkok). After that MC/PD cannot record;
-  each session still without a result (or first recorded after the cut-off by an admin) costs its PD 500 THB (the MC when
-  there is no PD; guests never).
+  each session still without a result (or first recorded after the cut-off by an admin) costs its PD 500 THB (never the MC:
+  recording is the PD's job).
 - The screenshot is stored with each reading (`live_result_images`) so an edit can show it.
 
 The payroll workbook (`/api/export/payroll?month=YYYY-MM`) has four sheets: Summary (hours, KPI, GMV per person, results not
