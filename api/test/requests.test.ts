@@ -365,8 +365,8 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect([pdA.getCell('N').value, pdA.getCell('O').value]).toEqual([2, 1000]);
     expect(wb.getWorksheet('Missing results')!.rowCount).toBe(3);
     // Sessions sheet: the result status on every line, the 500 only on the PD's line.
-    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('F').value, r.getCell('O').value, r.getCell('P').value ?? null]);
-    expect(lines).toEqual(expect.arrayContaining([['PD A', 'missing', 500], ['MC A', 'missing', null], ['PD A', 'late', 500]]));
+    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('F').value, r.getCell('O').value, r.getCell('P').value ?? null, r.getCell('Q').value ?? null]);
+    expect(lines).toEqual(expect.arrayContaining([['PD A', 'missing', 500, 'Charged'], ['MC A', 'missing', null, null], ['PD A', 'late', 500, 'Charged']]));
   });
 
   it('exports the month for payroll, without guests, with a freelance sheet', async () => {

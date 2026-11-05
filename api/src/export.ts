@@ -40,6 +40,12 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
   const live = await monthSummary(db, month, now, { id: 0, role: 'admin' });
   const missingOf = (personId: number) => live.byPerson.find((p) => p.personId === personId);
   const liveOf = new Map(live.sessions.map((x) => [x.id, x]));
+  const charged = (sessionId: number, personId: number) => {
+    const x = liveOf.get(sessionId);
+    return Boolean(x && (x.status === 'missing' || x.status === 'late') && x.responsible.includes(personId));
+  };
+  const lastDay = dateCell(new Date(live.cutoff.getTime() - 1));
+  const deductionStatus = (fined: boolean) => (fined ? 'Charged' : `Pending: record by ${lastDay}`);
 
   // One line per person per session that earns hours.
   const lines = sessions.flatMap((s) =>
@@ -103,7 +109,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     'GMV comes from PD screenshots (before refunds). Use post-refund GMV from the order export for commission.',
     'Guests (retail trainers) are left out. Freelancers are listed per live on the Freelance sheet.',
     `Results close on ${dateCell(live.cutoff)} (the 25th of the next month). Each session still without a result then costs its PD ${FORGOT_RECORD_DEDUCTION} THB (never the MC).` +
-      (live.closed ? '' : ' Not closed yet at export time: the deduction column is 0 until then; see the Missing results sheet.'),
+      (live.closed ? '' : ` Not closed yet at export time: "Forgot-to-record deduction" stays 0 until then and "At risk" shows what will be charged if results are still missing after ${lastDay}.`),
   ]) {
     summary.addRow([note]).font = { italic: true, color: { argb: 'FF666666' } };
   }
@@ -126,6 +132,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Orders', key: 'orders', width: 9 },
     { header: 'Result', key: 'result', width: 11 },
     { header: 'Forgot-to-record (THB)', key: 'deduction', width: 22, numFmt: '#,##0' },
+    { header: 'Deduction status', key: 'deductionStatus', width: 26 },
     { header: 'Session ID', key: 'id', width: 10 },
   ];
   const detailRow = (l: (typeof lines)[number]) => ({
@@ -144,8 +151,10 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     gmv: l.result ? round2(l.result.gmv) : undefined,
     orders: l.result?.orders,
     result: liveOf.get(l.s.id)?.status ?? '',
-    // Charged on the PD's line only, once results have closed.
-    deduction: liveOf.get(l.s.id)?.fined && liveOf.get(l.s.id)!.responsible.includes(l.st.personId) ? FORGOT_RECORD_DEDUCTION : undefined,
+    // On the PD's line only. Charged once results close; until then it is what is at stake.
+    ...(charged(l.s.id, l.st.personId)
+      ? { deduction: FORGOT_RECORD_DEDUCTION, deductionStatus: deductionStatus(liveOf.get(l.s.id)!.fined) }
+      : {}),
     id: l.s.id,
   });
   const detail = wb.addWorksheet('Sessions');
@@ -181,8 +190,9 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'MC', key: 'mc', width: 16 },
     { header: 'PD', key: 'pd', width: 16 },
     { header: 'Status', key: 'status', width: 10 },
-    { header: 'Fined', key: 'fined', width: 18 },
+    { header: 'PD charged', key: 'fined', width: 18 },
     { header: 'Deduction (THB)', key: 'deduction', width: 16, numFmt: '#,##0' },
+    { header: 'Deduction status', key: 'deductionStatus', width: 26 },
     { header: 'Session ID', key: 'id', width: 10 },
   ]);
   const missing = live.sessions.filter((x) => x.status === 'missing' || x.status === 'late');
@@ -191,7 +201,9 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       date: dateCell(x.start), start: timeCell(x.start), end: timeCell(x.end), room: x.roomCode,
       mc: x.mc.join(', '), pd: x.pd.join(', '), status: x.status,
       fined: x.responsible.map((id) => people.get(id)?.nickname).join(', '),
-      deduction: x.fined ? FORGOT_RECORD_DEDUCTION * x.responsible.length : 0, id: x.id,
+      deduction: FORGOT_RECORD_DEDUCTION * x.responsible.length,
+      deductionStatus: x.responsible.length ? deductionStatus(x.fined) : 'No PD: nobody charged',
+      id: x.id,
     });
   }
   if (missing.length === 0) miss.addRow({ date: 'Every session has a result' });
