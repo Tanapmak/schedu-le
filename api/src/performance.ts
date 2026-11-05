@@ -80,7 +80,7 @@ export async function performanceScores(db: Db, now = new Date()): Promise<{ sco
   );
   const { rows: count } = await db.query(
     `SELECT (SELECT count(*) FROM performance_history WHERE started_at >= $1 AND gmv IS NOT NULL)
-          + (SELECT count(DISTINCT session_id) FROM live_results WHERE session_id IS NOT NULL AND captured_at >= $1) AS n`,
+          + (SELECT count(DISTINCT session_id) FROM live_results WHERE session_id IS NOT NULL AND superseded_at IS NULL AND captured_at >= $1) AS n`,
     [since],
   );
   return {

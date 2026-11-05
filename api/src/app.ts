@@ -14,7 +14,8 @@ import { AiFailed, claudeWishReader, defaultPool, planSchedule, type WishReader 
 import { copyRows, importRows, importTemplate, readSheet, saveDrafts } from './bulk.js';
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
-import { canRecord, deleteResult, listResults, parseResultInput, saveResult, suggestNewBroadcast } from './results.js';
+import { canRecord, deleteResult, editResult, flagInfo, getResult, listResults, parseResultInput, resultImage, resultPolicy, saveResult } from './results.js';
+import { monthSummary } from './liveSummary.js';
 import { claudeReader, normalizeBoxes, type ImageMediaType, type ScreenshotReader } from './vision.js';
 import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
@@ -34,6 +35,8 @@ export interface AppOptions {
   readScreenshot?: ScreenshotReader;
   /** Turns the admin's free-text scheduling wishes into rules. Undefined when no AI key is set. */
   readWishes?: WishReader;
+  /** The clock, for tests of time windows. */
+  now?: () => Date;
 }
 
 const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
@@ -41,6 +44,7 @@ const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+
 export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: AppOptions = { readScreenshot: claudeReader() }) {
   const app = express();
   const readWishes = 'readWishes' in opts ? opts.readWishes : claudeWishReader();
+  const clock = opts.now ?? (() => new Date());
   // Screenshots arrive as base64 data URLs (the web app shrinks them to ~2000 px first).
   app.use(express.json({ limit: '8mb' }));
 
@@ -309,7 +313,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   // ---- Payroll workbook (hours, KPI, results, freelance lives). No pay rates are stored in the app.
   app.get('/api/export/payroll', requireManager, async (req, res) => {
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
-    const wb = await payrollWorkbook(pool, req.query.month);
+    const wb = await payrollWorkbook(pool, req.query.month, clock());
     res.setHeader('content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('content-disposition', `attachment; filename="schedu-le-payroll-${req.query.month}.xlsx"`);
     await wb.xlsx.write(res);
@@ -339,19 +343,22 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
       ? new Date(`${reading.live_started_at.replace(' ', 'T')}:00+07:00`)
       : null;
     const liveStartedAt = started && !Number.isNaN(started.getTime()) ? started : null;
-    const isNewBroadcast = await suggestNewBroadcast(pool, session, liveStartedAt);
+    const editing = req.body.editing ? parseId(req.body.editing, 'editing') : undefined;
+    const flag = await flagInfo(pool, session, liveStartedAt, editing);
     // Boxes go back as fractions of the image; without its size we cannot place them.
     const boxes = width && height ? normalizeBoxes(reading.boxes, width, height) : [];
-    res.json({ reading: { ...reading, boxes: undefined }, boxes, liveStartedAt, isNewBroadcast });
+    res.json({ reading: { ...reading, boxes: undefined }, boxes, liveStartedAt, ...flag });
   });
 
-  // Suggests the Session Flag for a hand-typed reading.
+  // Suggests the Session Flag for a hand-typed reading, and says what the user may still do.
   app.get('/api/results/flag', async (req, res) => {
     const sessionId = parseId(req.query.sessionId, 'sessionId');
     const { session } = await canRecord(pool, sessionId, req.user!);
     if (!session) return void res.status(404).json({ error: 'not_found' });
     const started = req.query.liveStartedAt ? parseDate(req.query.liveStartedAt, 'liveStartedAt') : null;
-    res.json({ isNewBroadcast: await suggestNewBroadcast(pool, session, started) });
+    const editing = req.query.editing ? parseId(req.query.editing, 'editing') : undefined;
+    const flag = await flagInfo(pool, session, started, editing);
+    res.json({ ...flag, ...resultPolicy(session, req.user!.role, clock()) });
   });
 
   app.post('/api/results', async (req, res) => {
@@ -359,9 +366,17 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     const { session, allowed } = await canRecord(pool, sessionId, req.user!);
     if (!session) return void res.status(404).json({ error: 'not_found' });
     if (!allowed) return void res.status(403).json({ error: 'not_your_session' });
+    const policy = resultPolicy(session, req.user!.role, clock());
+    if (!policy.canRecord) return void res.status(422).json({ error: 'record_closed', cutoff: policy.cutoff });
     const input = { ...parseResultInput(req.body), sessionId };
-    const id = await saveResult(pool, session.roomId, input, req.user!.id);
+    const id = await saveResult(pool, session, input, req.user!.id);
     res.status(201).json({ ok: true, id });
+  });
+
+  // Live performance for a month: totals, by room, by person, every session's result status.
+  app.get('/api/results/summary', async (req, res) => {
+    if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
+    res.json(await monthSummary(pool, req.query.month, clock(), req.user!));
   });
 
   app.get('/api/results', async (req, res) => {
@@ -371,8 +386,39 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.json(await listResults(pool, from, to));
   });
 
+  /** The reading and its session, if the user works that session (or is admin). */
+  const ownReading = async (req: Request, res: Response) => {
+    const r = await getResult(pool, parseId(req.params.id, 'id'));
+    if (!r || r.sessionId === null) return void res.status(404).json({ error: 'not_found' });
+    const { session, allowed } = await canRecord(pool, r.sessionId, req.user!);
+    if (!session) return void res.status(404).json({ error: 'not_found' });
+    if (!allowed) return void res.status(403).json({ error: 'not_your_session' });
+    return { r, session, policy: resultPolicy(session, req.user!.role, clock()) };
+  };
+
+  app.get('/api/results/:id/image', async (req, res) => {
+    const found = await ownReading(req, res);
+    if (!found) return;
+    const image = await resultImage(pool, found.r.id);
+    if (!image) return void res.status(404).json({ error: 'no_image' });
+    res.json(image);
+  });
+
+  // Edit = save a new version; the old one is kept as history.
+  app.put('/api/results/:id', async (req, res) => {
+    const found = await ownReading(req, res);
+    if (!found) return;
+    if (!found.policy.canEdit) return void res.status(422).json({ error: 'edit_closed', editUntil: found.policy.editUntil });
+    const input = { ...parseResultInput(req.body), sessionId: found.session.id };
+    const out = await editResult(pool, found.r.id, found.session, input, req.user!.id);
+    res.status(out.ok ? 200 : out.status).json(out);
+  });
+
   app.delete('/api/results/:id', async (req, res) => {
-    const ok = await deleteResult(pool, parseId(req.params.id, 'id'), req.user!);
+    const found = await ownReading(req, res);
+    if (!found) return;
+    if (!found.policy.canEdit) return void res.status(422).json({ ok: false, error: 'edit_closed', editUntil: found.policy.editUntil });
+    const ok = await deleteResult(pool, found.r.id, req.user!);
     res.status(ok ? 200 : 404).json({ ok });
   });
 

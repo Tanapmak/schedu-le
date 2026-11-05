@@ -224,6 +224,39 @@ export interface ResultRow extends Partial<Record<Metric, number | null>> {
   ordersDelta: number | null;
   viewsDelta: number | null;
   recordedBy: string | null;
+  recordedById: number | null;
+  aiReading: Reading | null;
+  version: number;
+  createdAt: string;
+  hasImage: boolean;
+}
+
+/** Session Flag suggestion plus what the user may still do with this session's results. */
+export interface FlagInfo {
+  isNewBroadcast: boolean;
+  canContinue: boolean;
+  previousSessionId: number | null;
+  previousHasResult: boolean;
+  cutoff: string;
+  editUntil: string;
+  canRecord: boolean;
+  canEdit: boolean;
+}
+
+export type ResultStatus = 'upcoming' | 'recorded' | 'missing' | 'late' | 'cancelled';
+export interface LiveSummary {
+  month: string;
+  cutoff: string;
+  closed: boolean;
+  deductionAmount: number;
+  totals: { gmv: number; orders: number; hours: number; sessions: number; ended: number; recorded: number; missing: number };
+  byRoom: { roomId: number; roomCode: string; sessions: number; hours: number; gmv: number; gmvPerHour: number | null; missing: number }[];
+  byPerson: { personId: number; nickname: string; sessions: number; hours: number; gmvMc: number; gmvPd: number; missing: number; deduction: number; pendingDeduction: number }[];
+  daily: { date: string; gmv: number }[];
+  sessions: {
+    id: number; start: string; end: string; roomId: number; roomCode: string; mc: string[]; pd: string[]; hours: number;
+    gmv: number | null; orders: number | null; readings: number; edited: boolean; status: ResultStatus; responsible: number[]; fined: boolean;
+  }[];
 }
 
 export interface ResultInput {
@@ -236,6 +269,11 @@ export interface ResultInput {
   source: 'ai' | 'manual';
   aiReading: Reading | null;
   note?: string;
+  /** The screenshot, kept so a later edit can show it. */
+  image?: string;
+  width?: number;
+  height?: number;
+  boxes?: ReadingBox[];
 }
 
 export interface Studio {
@@ -471,11 +509,16 @@ export const api = {
     (await request<{ ok: boolean; id: number; sessionsOnDay: number[] }>('POST', '/api/holidays', { name, start, end })).data,
   removeHoliday: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/holidays/${id}`)).data,
   hours: async (month: string) => (await request<{ month: string; rows: HoursRow[] }>('GET', `/api/hours?month=${month}`)).data.rows,
-  readScreenshot: async (sessionId: number, image: string, width?: number, height?: number) =>
-    request<{ reading: Reading; boxes: ReadingBox[]; liveStartedAt: string | null; isNewBroadcast: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image, width, height }),
-  suggestFlag: async (sessionId: number, liveStartedAt: string | null) =>
-    (await request<{ isNewBroadcast: boolean }>('GET', `/api/results/flag?sessionId=${sessionId}${liveStartedAt ? `&liveStartedAt=${encodeURIComponent(liveStartedAt)}` : ''}`)).data.isNewBroadcast,
-  saveResult: async (input: ResultInput) => request<{ ok: boolean; id: number; message?: string }>('POST', '/api/results', input),
+  readScreenshot: async (sessionId: number, image: string, width?: number, height?: number, editing?: number) =>
+    request<{ reading: Reading; boxes: ReadingBox[]; liveStartedAt: string | null; isNewBroadcast: boolean; canContinue: boolean; error?: string }>('POST', '/api/results/read', { sessionId, image, width, height, editing }),
+  flagInfo: async (sessionId: number, liveStartedAt: string | null, editing?: number) =>
+    (await request<FlagInfo>('GET', `/api/results/flag?sessionId=${sessionId}${liveStartedAt ? `&liveStartedAt=${encodeURIComponent(liveStartedAt)}` : ''}${editing ? `&editing=${editing}` : ''}`)).data,
+  saveResult: async (input: ResultInput) => request<{ ok: boolean; id: number; message?: string; error?: string }>('POST', '/api/results', input),
+  editResult: async (id: number, input: ResultInput) =>
+    request<{ ok: boolean; id: number; message?: string; error?: string }>('PUT', `/api/results/${id}`, input),
+  resultImage: async (id: number) =>
+    (await request<{ url: string; width: number | null; height: number | null; boxes: ReadingBox[] }>('GET', `/api/results/${id}/image`)).data,
+  liveSummary: async (month: string) => (await request<LiveSummary>('GET', `/api/results/summary?month=${month}`)).data,
   results: async (from: Date, to: Date) =>
     (await request<ResultRow[]>('GET', `/api/results?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)).data,
   myAttendance: async () => (await request<MyAttendance>('GET', '/api/attendance/me')).data,
@@ -523,7 +566,7 @@ export const api = {
   },
   studios: async () => (await request<Studio[]>('GET', '/api/studios')).data,
   saveStudio: async (s: Omit<Studio, 'id'> & { id?: number }) => (await request<{ ok: boolean; id: number }>('POST', '/api/studios', s)).data,
-  deleteResult: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/results/${id}`)).data,
+  deleteResult: async (id: number) => (await request<{ ok: boolean; error?: string }>('DELETE', `/api/results/${id}`)).data,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,
 };

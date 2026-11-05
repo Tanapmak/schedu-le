@@ -653,3 +653,19 @@ table.data.bulk td { vertical-align: top; }
 .prefs-team-head h2 { margin: 0; }
 .prefs-list li.old { opacity: .6; }
 .prefs-list li .pill { margin-left: 4px; }
+
+/* ---- v2.1: result edits and live performance */
+.ico-livePerf { border-radius: 3px; border-left-width: 6px; }
+.segmented button:disabled { color: var(--gray-medium); cursor: not-allowed; }
+table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
+.row-actions { white-space: nowrap; }
+.row-actions .link + .link { margin-left: 10px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.section-head h2 { margin: 0; }
+.day-bars { display: flex; align-items: flex-end; gap: 3px; height: 140px; padding: 4px 0 20px; overflow-x: auto; }
+.day-bar { flex: 1 0 14px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
+.day-bar span { display: block; width: 100%; min-height: 2px; background: var(--red); border-radius: 3px 3px 0 0; }
+.day-bar small { position: absolute; bottom: -18px; font-size: 10px; color: var(--muted); }
+.day-bar:hover span { background: var(--ink); }
+.day-bar span.zero { background: var(--gray-medium); }
+.table-wrap + .hint { margin-top: 8px; }

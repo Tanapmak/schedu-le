@@ -270,14 +270,98 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect((await call('POST', '/api/results', { sessionId: s, isNewBroadcast: true, metrics: { gmv: -1 } }, 'pd.a@example.com')).status).toBe(400);
   });
 
-  it('suggests new for the first session of the day in a room, continuing for the next', async () => {
+  it('continues only from a session that ends right when this one starts, and that has a result', async () => {
     const first = await published('TTS 2', '2030-03-02T10:00', '2030-03-02T12:00', 1, 3);
     const second = await published('TTS 2', '2030-03-02T12:00', '2030-03-02T14:00', 2, 4);
-    const other = await published('TTS 3', '2030-03-02T15:00', '2030-03-02T17:00', 6, 3);
-    const flag = async (id: number) => (await call('GET', `/api/results/flag?sessionId=${id}`)).body.isNewBroadcast;
-    expect(await flag(first)).toBe(true);
-    expect(await flag(second)).toBe(false);
-    expect(await flag(other)).toBe(true); // another room
+    const afterGap = await published('TTS 2', '2030-03-02T17:00', '2030-03-02T19:00', 6, 3);
+    const other = await published('TTS 3', '2030-03-02T14:00', '2030-03-02T16:00', 6, 3);
+    const flag = async (id: number) => (await call('GET', `/api/results/flag?sessionId=${id}`)).body;
+    expect(await flag(first)).toMatchObject({ isNewBroadcast: true, canContinue: false });
+    // The session before has no result yet: nothing to subtract.
+    expect(await flag(second)).toMatchObject({ isNewBroadcast: true, canContinue: false, previousSessionId: first, previousHasResult: false });
+    await call('POST', '/api/results', { sessionId: first, isNewBroadcast: true, capturedAt: '2030-03-02T11:58:00+07:00', metrics: { gmv: 1000 } });
+    expect(await flag(second)).toMatchObject({ isNewBroadcast: false, canContinue: true, previousHasResult: true });
+    expect(await flag(afterGap)).toMatchObject({ isNewBroadcast: true, canContinue: false }); // 14:00-17:00 gap
+    expect(await flag(other)).toMatchObject({ isNewBroadcast: true, canContinue: false }); // another room
+  });
+
+  it('never continues across a gap, and an edit fixes a wrong flag for the readings after it', async () => {
+    const day = '2030-03-04';
+    const a = await published('TTS 1', `${day}T12:00`, `${day}T14:00`, 1, 3);
+    const b = await published('TTS 1', `${day}T17:00`, `${day}T19:00`, 2, 3);
+    const c = await published('TTS 1', `${day}T19:00`, `${day}T21:00`, 6, 3);
+    const save = (sessionId: number, at: string, gmv: number, isNewBroadcast: boolean, extra = {}) =>
+      call('POST', '/api/results', { sessionId, isNewBroadcast, capturedAt: `${day}T${at}:00+07:00`, metrics: { gmv }, ...extra }, 'pd.a@example.com');
+    const deltas = async () =>
+      (await call('GET', `/api/results?from=${day}T00:00:00%2B07:00&to=2030-03-05T06:00:00%2B07:00`)).body
+        .map((r: { sessionId: number; gmvDelta: number }) => [r.sessionId, r.gmvDelta]);
+
+    await save(a, '13:58', 101724, true);
+    // "Continues" picked by hand after a gap: saved as a new broadcast anyway.
+    await save(b, '19:03', 23438, false);
+    expect(await deltas()).toEqual([[b, 23438], [a, 101724]]);
+
+    // An old wrong reading (from before this fix) continued A across the gap; C continued B.
+    await pool.query('DELETE FROM live_results WHERE session_id = $1', [b]);
+    const aId = (await pool.query('SELECT id FROM live_results WHERE session_id = $1', [a])).rows[0].id;
+    const png = 'data:image/png;base64,iVBORw0KGgo=';
+    const wrong = (await pool.query(
+      `INSERT INTO live_results (session_id, room_id, broadcast_id, is_new_broadcast, captured_at, gmv, recorded_by)
+       VALUES ($1, $2, $3, false, '${day}T19:03:00+07:00', 23438, 3) RETURNING id::int`, [b, rooms['TTS 1'], aId])).rows[0].id;
+    await pool.query(`INSERT INTO live_result_images (result_id, media_type, data) VALUES ($1, 'image/png', decode('iVBORw0KGgo=', 'base64'))`, [wrong]);
+    await save(c, '21:02', 64579, false);
+    expect(await deltas()).toEqual([[c, 41141], [b, -78286], [a, 101724]]);
+
+    const edit = await call('PUT', `/api/results/${wrong}`, {
+      isNewBroadcast: true, capturedAt: `${day}T19:03:00+07:00`, metrics: { gmv: 23438 }, note: 'fixed flag',
+    }, 'pd.a@example.com');
+    expect(edit.status).toBe(200);
+    expect(await deltas()).toEqual([[c, 41141], [b, 23438], [a, 101724]]);
+    // The edit keeps the screenshot; the old version is gone from the list, the new one is v2.
+    expect((await call('GET', `/api/results/${edit.body.id}/image`, undefined, 'pd.a@example.com')).body.url).toBe(png);
+    const list = (await call('GET', `/api/results?from=${day}T00:00:00%2B07:00&to=2030-03-05T00:00:00%2B07:00`)).body;
+    expect(list.find((r: { sessionId: number }) => r.sessionId === b)).toMatchObject({ version: 2, note: 'fixed flag', hasImage: true });
+    expect((await call('PUT', `/api/results/${wrong}`, { isNewBroadcast: true, metrics: { gmv: 1 } }, 'pd.a@example.com')).status).toBe(409);
+    expect((await call('PUT', `/api/results/${edit.body.id}`, { isNewBroadcast: true, metrics: { gmv: 1 } }, 'mc.c@example.com')).status).toBe(403);
+
+    // A screenshot sent with a new reading is stored with it.
+    const withShot = await save(a, '13:59', 101800, false, { image: png, width: 10, height: 20, boxes: [{ field: 'gmv', x: 0, y: 0, w: 1, h: 1 }] });
+    expect((await call('GET', `/api/results/${withShot.body.id}/image`)).body).toMatchObject({ url: png, width: 10, height: 20 });
+    // Deleting the edited reading removes its history too.
+    expect((await call('DELETE', `/api/results/${edit.body.id}`)).status).toBe(404); // C still continues it
+    expect((await call('DELETE', `/api/results/${(list[0] as { id: number }).id}`, undefined, 'pd.a@example.com')).body.ok).toBe(true);
+    expect((await call('DELETE', `/api/results/${edit.body.id}`, undefined, 'pd.a@example.com')).body.ok).toBe(true);
+    expect((await pool.query('SELECT count(*)::int AS n FROM live_results WHERE session_id = $1', [b])).rows[0].n).toBe(0);
+  });
+
+  it('closes recording on the 25th of the next month, edits after 7 days, and fines missing results', async () => {
+    // May 2020: closed long ago. PD A missed one session, recorded none; admin back-recorded one late.
+    const missed = await published('TTS 1', '2020-05-10T10:00', '2020-05-10T12:00', 1, 3);
+    const late = await published('TTS 1', '2020-05-11T10:00', '2020-05-11T12:00', 1, 3);
+    expect((await call('POST', '/api/results', { sessionId: missed, isNewBroadcast: true, metrics: { gmv: 5 } }, 'pd.a@example.com')))
+      .toMatchObject({ status: 422, body: { error: 'record_closed' } });
+    const byAdmin = await call('POST', '/api/results', { sessionId: late, isNewBroadcast: true, capturedAt: '2020-05-11T11:55:00+07:00', metrics: { gmv: 700 } });
+    expect(byAdmin.status).toBe(201);
+    expect((await call('PUT', `/api/results/${byAdmin.body.id}`, { isNewBroadcast: true, metrics: { gmv: 800 } }, 'pd.a@example.com')))
+      .toMatchObject({ status: 422, body: { error: 'edit_closed' } });
+    expect((await call('GET', `/api/results/flag?sessionId=${missed}`, undefined, 'pd.a@example.com')).body)
+      .toMatchObject({ canRecord: false, canEdit: false, cutoff: '2020-06-24T17:00:00.000Z' });
+
+    const sum = (await call('GET', '/api/results/summary?month=2020-05')).body;
+    expect(sum).toMatchObject({ closed: true, totals: { gmv: 700, ended: 2, recorded: 1, missing: 1 } });
+    expect(sum.sessions.map((s: { status: string; fined: boolean }) => [s.status, s.fined])).toEqual([['missing', true], ['late', true]]);
+    expect(sum.byPerson.find((p: { nickname: string }) => p.nickname === 'PD A')).toMatchObject({ missing: 2, deduction: 1000 });
+    expect(sum.byPerson.find((p: { nickname: string }) => p.nickname === 'MC A')).toMatchObject({ missing: 0, deduction: 0, gmvMc: 700 });
+    // The team sees only their own sessions and row.
+    const mine = (await call('GET', '/api/results/summary?month=2020-05', undefined, 'mc.b@example.com')).body;
+    expect(mine).toMatchObject({ totals: { sessions: 0 }, byPerson: [] });
+
+    // The payroll workbook carries the deduction and a list of missing results.
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(Buffer.from(await (await fetch(`${base}/api/export/payroll?month=2020-05`)).arrayBuffer()) as unknown as ExcelJS.Buffer);
+    const pdA = wb.getWorksheet('Summary')!.getRows(2, 5)!.find((r) => r.getCell(1).value === 'PD A')!;
+    expect([pdA.getCell('N').value, pdA.getCell('O').value]).toEqual([2, 1000]);
+    expect(wb.getWorksheet('Missing results')!.rowCount).toBe(3);
   });
 
   it('exports the month for payroll, without guests, with a freelance sheet', async () => {
@@ -291,7 +375,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect(res.headers.get('content-type')).toContain('spreadsheetml');
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ExcelJS.Buffer);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance', 'Missing results']);
 
     const names = (sheet: string, col: string) =>
       wb.getWorksheet(sheet)!.getColumn(col).values.slice(2).filter((v) => typeof v === 'string');

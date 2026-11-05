@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs';
 import { hoursReport } from './hours.js';
 import { countsHours, hoursOf } from './rules/index.js';
-import { resultsBySession } from './results.js';
+import { FORGOT_RECORD_DEDUCTION, resultsBySession } from './results.js';
+import { monthSummary } from './liveSummary.js';
 import { monthRange } from './sessions.js';
 import { listPeople, listRooms, sessionsBetween, type Db } from './store.js';
 
@@ -29,13 +30,15 @@ function header(ws: ExcelJS.Worksheet, columns: { header: string; key: string; w
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
 }
 
-export async function payrollWorkbook(db: Db, month: string): Promise<ExcelJS.Workbook> {
+export async function payrollWorkbook(db: Db, month: string, now = new Date()): Promise<ExcelJS.Workbook> {
   const { from, to } = monthRange(new Date(`${month}-15T00:00:00+07:00`));
   const people = new Map((await listPeople(db)).map((p) => [p.id, p]));
   const rooms = new Map((await listRooms(db)).map((r) => [r.id, r]));
   const sessions = (await sessionsBetween(db, from, to)).filter((s) => s.start >= from && s.start < to);
   const results = await resultsBySession(db, from, to);
   const hours = await hoursReport(db, month, new Date(8.64e15));
+  const live = await monthSummary(db, month, now, { id: 0, role: 'admin' });
+  const missingOf = (personId: number) => live.byPerson.find((p) => p.personId === personId);
 
   // One line per person per session that earns hours.
   const lines = sessions.flatMap((s) =>
@@ -65,6 +68,8 @@ export async function payrollWorkbook(db: Db, month: string): Promise<ExcelJS.Wo
     { header: 'Sessions', key: 'sessions', width: 10 },
     { header: 'GMV as MC (screen, pre-refund)', key: 'gmvMc', width: 28, numFmt: '#,##0' },
     { header: 'GMV as PD (screen, pre-refund)', key: 'gmvPd', width: 28, numFmt: '#,##0' },
+    { header: 'Results not recorded', key: 'missing', width: 20 },
+    { header: 'Forgot-to-record deduction (THB)', key: 'deduction', width: 30, numFmt: '#,##0' },
   ]);
   for (const h of hours) {
     if (h.employment === 'guest' || h.totalHours === 0) continue;
@@ -84,6 +89,8 @@ export async function payrollWorkbook(db: Db, month: string): Promise<ExcelJS.Wo
       sessions: h.sessions,
       gmvMc: round2(gmv('mc')),
       gmvPd: round2(gmv('pd')),
+      missing: missingOf(h.personId)?.missing ?? 0,
+      deduction: missingOf(h.personId)?.deduction ?? 0,
     });
   }
   summary.addRow([]);
@@ -92,6 +99,8 @@ export async function payrollWorkbook(db: Db, month: string): Promise<ExcelJS.Wo
     'KPI applies to full-time staff only, on hours in their own position. Hours in the other role (a PD hosting as MC) have KPI 0 and are listed apart.',
     'GMV comes from PD screenshots (before refunds). Use post-refund GMV from the order export for commission.',
     'Guests (retail trainers) are left out. Freelancers are listed per live on the Freelance sheet.',
+    `Results close on ${dateCell(live.cutoff)} (the 25th of the next month). Each session still without a result then costs its PD (or the MC when there is no PD) ${FORGOT_RECORD_DEDUCTION} THB.` +
+      (live.closed ? '' : ' Not closed yet at export time: the deduction column is 0 until then; see the Missing results sheet.'),
   ]) {
     summary.addRow([note]).font = { italic: true, color: { argb: 'FF666666' } };
   }
@@ -153,6 +162,31 @@ export async function payrollWorkbook(db: Db, month: string): Promise<ExcelJS.Wo
     fl.addRow([]);
   }
   if (freelancers.length === 0) fl.addRow({ date: 'No freelance lives this month' });
+
+  // ---- Missing results: sessions over without a result (fined once results close).
+  const miss = wb.addWorksheet('Missing results');
+  header(miss, [
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Start', key: 'start', width: 8 },
+    { header: 'End', key: 'end', width: 8 },
+    { header: 'Room', key: 'room', width: 9 },
+    { header: 'MC', key: 'mc', width: 16 },
+    { header: 'PD', key: 'pd', width: 16 },
+    { header: 'Status', key: 'status', width: 10 },
+    { header: 'Fined', key: 'fined', width: 18 },
+    { header: 'Deduction (THB)', key: 'deduction', width: 16, numFmt: '#,##0' },
+    { header: 'Session ID', key: 'id', width: 10 },
+  ]);
+  const missing = live.sessions.filter((x) => x.status === 'missing' || x.status === 'late');
+  for (const x of missing) {
+    miss.addRow({
+      date: dateCell(x.start), start: timeCell(x.start), end: timeCell(x.end), room: x.roomCode,
+      mc: x.mc.join(', '), pd: x.pd.join(', '), status: x.status,
+      fined: x.responsible.map((id) => people.get(id)?.nickname).join(', '),
+      deduction: x.fined ? FORGOT_RECORD_DEDUCTION * x.responsible.length : 0, id: x.id,
+    });
+  }
+  if (missing.length === 0) miss.addRow({ date: 'Every session has a result' });
 
   return wb;
 }

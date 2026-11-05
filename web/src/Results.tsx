@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
-import { api, METRICS, type Metric, type Person, type Reading, type ReadingBox, type ResultRow, type Room, type Session, type User, isManager } from './api';
+import { api, METRICS, type FlagInfo, type Metric, type Person, type Reading, type ReadingBox, type ResultRow, type Room, type Session, type User, isManager } from './api';
 import { t, type Lang, type StringKey } from './i18n';
 import { Board } from './Board';
 import { bkkDate, bkkInstant, bkkTime } from './time';
@@ -60,16 +60,30 @@ const fromLocalInput = (v: string) => (v ? bkkInstant(v.slice(0, 10), v.slice(11
 const fmt = (n: number | null | undefined, digits = 0) =>
   n === null || n === undefined ? '–' : n.toLocaleString('en-US', { maximumFractionDigits: digits });
 
+/** "5 Nov 14:00" in Bangkok time. */
+const whenLabel = (lang: Lang, iso: string, withTime = true) => {
+  const d = new Date(iso);
+  const day = new Date(d.getTime() + 7 * 3_600_000).toLocaleDateString(lang === 'th' ? 'th-TH' : lang === 'zh' ? 'zh-CN' : 'en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return withTime ? `${day} ${bkkTime(d)}` : day;
+};
+
 export function ResultsPage({ lang, user, rooms, people, aiReader }: Props) {
   const [range, setRange] = useState<{ from: Date; to: Date }>();
   const [rows, setRows] = useState<ResultRow[]>();
   const [open, setOpen] = useState<Session>();
+  const [editing, setEditing] = useState<ResultRow>();
+  const [policy, setPolicy] = useState<FlagInfo>();
   const isAdmin = isManager(user.role);
 
   const load = useCallback(() => {
     if (range) api.results(range.from, range.to).then(setRows, () => setRows([]));
   }, [range?.from.getTime(), range?.to.getTime()]);
   useEffect(load, [load]);
+  useEffect(() => {
+    setPolicy(undefined);
+    setEditing(undefined);
+    if (open) api.flagInfo(open.id, null).then(setPolicy, () => undefined);
+  }, [open?.id]);
 
   // Latest GMV recorded for each session, shown on its card.
   const latest = new Map<number, ResultRow>();
@@ -108,23 +122,53 @@ export function ResultsPage({ lang, user, rooms, people, aiReader }: Props) {
       />
 
       {open && (
-        <Modal title={`${t(lang, 'recordResult')} · ${sessionLabel(lang, open, rooms)}`} onClose={() => setOpen(undefined)} footer={null} wide>
+        <Modal
+          title={`${t(lang, editing ? 'editReading' : 'recordResult')} · ${sessionLabel(lang, open, rooms)}`}
+          onClose={() => setOpen(undefined)}
+          footer={null}
+          wide
+        >
           <p className="muted">
             {open.staff
               .filter((x) => !x.replaced)
               .map((x) => `${people.find((p) => p.id === x.personId)?.nickname} (${t(lang, x.role)})`)
               .join(' · ')}
           </p>
-          <ResultForm lang={lang} sessionId={open.id} aiReader={aiReader} onSaved={load} />
+          {policy && (
+            <p className="hint">
+              {t(lang, 'recordUntil').replace('{when}', whenLabel(lang, policy.cutoff, false))} · {t(lang, 'editUntil').replace('{when}', whenLabel(lang, policy.editUntil))}
+              {isAdmin && ` · ${t(lang, 'adminNoLimit')}`}
+            </p>
+          )}
+          <ResultForm
+            key={editing?.id ?? 'new'}
+            lang={lang}
+            session={open}
+            aiReader={aiReader}
+            editing={editing}
+            onSaved={() => (setEditing(undefined), load())}
+            onCancelEdit={() => setEditing(undefined)}
+          />
           <h3>{t(lang, 'sessionReadings')}</h3>
-          <Readings lang={lang} user={user} rooms={rooms} rows={(rows ?? []).filter((r) => r.sessionId === open.id)} onChanged={load} />
+          <Readings
+            lang={lang}
+            user={user}
+            rooms={rooms}
+            rows={(rows ?? []).filter((r) => r.sessionId === open.id)}
+            canEdit={Boolean(policy?.canEdit)}
+            editingId={editing?.id}
+            onEdit={setEditing}
+            onChanged={load}
+          />
         </Modal>
       )}
     </div>
   );
 }
 
-function Readings({ lang, user, rooms, rows, onChanged }: { lang: Lang; user: User; rooms: Room[]; rows: ResultRow[]; onChanged: () => void }) {
+function Readings({ lang, user, rooms, rows, canEdit, editingId, onEdit, onChanged }: {
+  lang: Lang; user: User; rooms: Room[]; rows: ResultRow[]; canEdit: boolean; editingId?: number; onEdit: (r: ResultRow) => void; onChanged: () => void;
+}) {
   const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
   if (rows.length === 0) return <p className="muted">{t(lang, 'noReadings')}</p>;
   return (
@@ -147,26 +191,37 @@ function Readings({ lang, user, rooms, rows, onChanged }: { lang: Lang; user: Us
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className={r.id === editingId ? 'mine' : ''}>
                 <td>{bkkTime(new Date(r.capturedAt))}</td>
                 <td>{codeOf(r.roomId)}</td>
                 <td>
                   <span className={`pill ${r.isNewBroadcast ? 'status-approved' : ''}`}>{t(lang, r.isNewBroadcast ? 'flagNew' : 'flagContinue')}</span>
                 </td>
                 <td className="num">{fmt(r.gmv)}</td>
-                <td className="num pos">{r.gmvDelta !== null ? `+${fmt(r.gmvDelta)}` : '–'}</td>
+                <td className={`num ${r.gmvDelta !== null && r.gmvDelta < 0 ? 'neg' : 'pos'}`}>
+                  {r.gmvDelta === null ? '–' : r.gmvDelta < 0 ? fmt(r.gmvDelta) : `+${fmt(r.gmvDelta)}`}
+                </td>
                 <td className="num">{fmt(r.orders)}</td>
                 <td className="num">{fmt(r.views)}</td>
                 <td>
                   {r.recordedBy}
                   {r.source === 'ai' && <span className="tag ai-tag">AI</span>}
+                  {r.version > 1 && <span className="tag" title={t(lang, 'editedHint')}>{t(lang, 'edited')} v{r.version}</span>}
                 </td>
-                <td>
-                  {(isManager(user.role) || r.recordedBy === user.nickname) && (
+                <td className="row-actions">
+                  {canEdit && (
+                    <button className="link" onClick={() => onEdit(r)}>
+                      {t(lang, 'edit')}
+                    </button>
+                  )}
+                  {canEdit && (isManager(user.role) || r.recordedById === user.id) && (
                     <button
                       className="link danger-link"
                       onClick={async () => {
-                        if (window.confirm(`${t(lang, 'remove')}?`) && (await api.deleteResult(r.id)).ok) onChanged();
+                        if (!window.confirm(`${t(lang, 'remove')}?`)) return;
+                        const out = await api.deleteResult(r.id);
+                        if (out.ok) onChanged();
+                        else window.alert(t(lang, out.error === 'edit_closed' ? 'editClosed' : 'removeBlocked'));
                       }}
                     >
                       {t(lang, 'remove')}
@@ -184,8 +239,16 @@ function Readings({ lang, user, rooms, rows, onChanged }: { lang: Lang; user: Us
 
 type AiState = 'idle' | 'reading' | 'done' | 'failed';
 
-function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessionId: number; aiReader: boolean; onSaved: () => void }) {
+/** Back-recording a finished session: default the capture time to the session's end, not now. */
+const defaultCapturedAt = (session: Session) => new Date(Math.min(Date.now(), new Date(session.end).getTime()));
+
+function ResultForm({ lang, session, aiReader, editing, onSaved, onCancelEdit }: {
+  lang: Lang; session: Session; aiReader: boolean; editing?: ResultRow; onSaved: () => void; onCancelEdit: () => void;
+}) {
+  const sessionId = session.id;
   const [image, setImage] = useState<Shot>();
+  const [imageChanged, setImageChanged] = useState(false);
+  const [flag, setFlag] = useState<FlagInfo>();
   const [boxes, setBoxes] = useState<ReadingBox[]>([]);
   const [active, setActive] = useState<string | null>(null);
   const inputs = useRef<Partial<Record<string, HTMLInputElement | null>>>({});
@@ -193,7 +256,7 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
   const [reading, setReading] = useState<Reading | null>(null);
   const [values, setValues] = useState<Partial<Record<Metric, string>>>({});
   const [extra, setExtra] = useState<{ label: string; value: string }[]>([]);
-  const [capturedAt, setCapturedAt] = useState(localInput(new Date()));
+  const [capturedAt, setCapturedAt] = useState(localInput(defaultCapturedAt(session)));
   const [liveStartedAt, setLiveStartedAt] = useState('');
   const [isNew, setIsNew] = useState(true);
   const [note, setNote] = useState('');
@@ -203,14 +266,44 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
   const [zoom, setZoom] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Suggest the flag from the room's last reading, for hand-typed results too.
+  // Editing: start from the saved reading and its screenshot.
   useEffect(() => {
-    api.suggestFlag(sessionId, fromLocalInput(liveStartedAt)).then(setIsNew, () => undefined);
+    if (!editing) return;
+    setValues(Object.fromEntries(METRICS.map((m) => [m, editing[m] == null ? '' : String(editing[m])])));
+    setExtra(Object.entries(editing.extraMetrics ?? {}).map(([label, value]) => ({ label, value })));
+    setCapturedAt(localInput(new Date(editing.capturedAt)));
+    setLiveStartedAt(editing.liveStartedAt ? localInput(new Date(editing.liveStartedAt)) : '');
+    setIsNew(editing.isNewBroadcast);
+    setNote(editing.note ?? '');
+    setReading(editing.aiReading);
+    if (editing.hasImage) {
+      api.resultImage(editing.id).then(
+        (img) => {
+          setImage({ url: img.url, width: img.width ?? 0, height: img.height ?? 0 });
+          setBoxes(img.boxes ?? []);
+        },
+        () => undefined,
+      );
+    }
+  }, [editing?.id]);
+
+  // Suggest the flag (a new reading only continues the session that ends right when this one starts).
+  useEffect(() => {
+    api.flagInfo(sessionId, fromLocalInput(liveStartedAt), editing?.id).then((f) => {
+      setFlag(f);
+      if (!editing) setIsNew(f.isNewBroadcast);
+    }, () => undefined);
   }, [sessionId, liveStartedAt, savedTick]);
+  const canContinue = flag?.canContinue ?? true;
+  useEffect(() => {
+    if (!canContinue) setIsNew(true);
+  }, [canContinue, editing?.id]);
+  const blocked = flag ? (editing ? !flag.canEdit : !flag.canRecord) : false;
 
   async function useImage(file: Blob) {
     const shot = await toDataUrl(file);
     setImage(shot);
+    setImageChanged(true);
     setBoxes([]);
     setActive(null);
     setMessage('');
@@ -222,7 +315,7 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
     setAi('reading');
     setBoxes([]);
     try {
-      const { status, data } = await api.readScreenshot(sessionId, shot.url, shot.width, shot.height);
+      const { status, data } = await api.readScreenshot(sessionId, shot.url, shot.width, shot.height, editing?.id);
       if (status !== 200) throw new Error(data.error);
       const r = data.reading;
       setReading(r);
@@ -272,20 +365,31 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
     setBusy(true);
     try {
       const metrics = Object.fromEntries(METRICS.filter((m) => values[m]).map((m) => [m, Number(values[m])]));
-      const { status, data } = await api.saveResult({
+      const sendImage = image && (!editing || imageChanged);
+      const input = {
         sessionId,
         capturedAt: fromLocalInput(capturedAt) ?? new Date().toISOString(),
         liveStartedAt: fromLocalInput(liveStartedAt),
         isNewBroadcast: isNew,
         metrics,
         extraMetrics: Object.fromEntries(extra.filter((x) => x.label.trim()).map((x) => [x.label, x.value])),
-        source: reading ? 'ai' : 'manual',
+        source: reading ? ('ai' as const) : ('manual' as const),
         aiReading: reading,
         note: note.trim() || undefined,
-      });
-      if (status !== 201) return setMessage(data.message ?? t(lang, 'loadFailed'));
+        ...(sendImage ? { image: image.url, width: image.width || undefined, height: image.height || undefined, boxes } : {}),
+      };
+      const { status, data } = editing ? await api.editResult(editing.id, input) : await api.saveResult(input);
+      if (status !== 201 && status !== 200) {
+        return setMessage(
+          data.error === 'record_closed' ? t(lang, 'recordClosed')
+            : data.error === 'edit_closed' ? t(lang, 'editClosed')
+              : data.error === 'already_edited' ? t(lang, 'alreadyEdited')
+                : data.message ?? t(lang, 'loadFailed'),
+        );
+      }
       setMessage(t(lang, 'saved'));
       setImage(undefined);
+      setImageChanged(false);
       setBoxes([]);
       setActive(null);
       setReading(null);
@@ -293,7 +397,7 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
       setExtra([]);
       setNote('');
       setAi('idle');
-      setCapturedAt(localInput(new Date()));
+      setCapturedAt(localInput(defaultCapturedAt(session)));
       setSavedTick((n) => n + 1);
       onSaved();
     } finally {
@@ -383,10 +487,20 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
               <button className={isNew ? 'active' : ''} onClick={() => setIsNew(true)}>
                 {t(lang, 'flagNew')}
               </button>
-              <button className={!isNew ? 'active' : ''} onClick={() => setIsNew(false)}>
+              <button
+                className={!isNew ? 'active' : ''}
+                disabled={!canContinue}
+                title={!canContinue ? t(lang, 'noContinueTitle') : undefined}
+                onClick={() => setIsNew(false)}
+              >
                 {t(lang, 'flagContinue')}
               </button>
             </div>
+            {!canContinue && (
+              <p className="hint warning-text">
+                {t(lang, flag?.previousSessionId && !flag.previousHasResult ? 'noContinuePrevMissing' : 'noContinueGap')}
+              </p>
+            )}
             <p className="hint">{t(lang, 'flagHint')}</p>
           </div>
           {METRICS.map((m) => (
@@ -422,10 +536,17 @@ function ResultForm({ lang, sessionId, aiReader, onSaved }: { lang: Lang; sessio
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
         </div>
+        {blocked && <p className="notice-bar">{t(lang, editing ? 'editClosed' : 'recordClosed')}</p>}
+        {editing && <p className="hint">{t(lang, 'editingHint')}</p>}
         <footer className="result-actions">
           {message && <span className="muted">{message}</span>}
-          <button className="primary" disabled={busy || ai === 'reading' || !hasNumbers} onClick={save}>
-            {t(lang, 'confirmSave')}
+          {editing && (
+            <button onClick={onCancelEdit} disabled={busy}>
+              {t(lang, 'cancelBtn')}
+            </button>
+          )}
+          <button className="primary" disabled={busy || blocked || ai === 'reading' || !hasNumbers} onClick={save}>
+            {t(lang, editing ? 'saveNewVersion' : 'confirmSave')}
           </button>
         </footer>
       </div>
