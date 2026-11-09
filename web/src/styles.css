@@ -692,3 +692,7 @@ table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
 .urgent-stats.warn { color: var(--warn); font-weight: 600; }
 .leave-docs { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 4px; font-size: 12px; }
 .error-text { color: var(--scarlet); font-size: 12px; }
+.whats-new { display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.5; }
+.whats-new p { margin: 0; }
+.whats-new ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.whats-new li p { color: var(--muted); font-size: 13px; }

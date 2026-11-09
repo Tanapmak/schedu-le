@@ -5,6 +5,7 @@ import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
 import { addDays, bkkDate, bkkInstant, formatDay, todayBkk } from './time';
 import { periodLabel, Tabs } from './ui';
+import { rulesLink, WhatsNewBox } from './WhatsNew';
 
 interface Props {
   lang: Lang;
@@ -33,6 +34,7 @@ export function LeavePage({ lang, user, people, rooms }: Props) {
   const [swaps, setSwaps] = useState<SwapRequest[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [formOpen, setFormOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [tab, setTab] = useState<StatusTab>('pending');
   const [day, setDay] = useState<string>(ALL_DAYS);
 
@@ -76,7 +78,13 @@ export function LeavePage({ lang, user, people, rooms }: Props) {
       <div className="page-head">
         <div>
           <h1>{t(lang, 'leave')}</h1>
-          <p className="sub">{t(lang, 'leaveRulesHint')}</p>
+          <p className="sub">
+            {t(lang, 'leaveRulesHint')} ·{' '}
+            <button className="link" onClick={() => setRulesOpen(true)}>
+              ⓘ {rulesLink[lang]}
+            </button>
+          </p>
+          {rulesOpen && <WhatsNewBox lang={lang} manager={isManager(user.role)} onClose={() => setRulesOpen(false)} />}
         </div>
         <div className="head-actions">
           <Tabs
