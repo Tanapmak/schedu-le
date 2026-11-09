@@ -4,7 +4,7 @@ import { BadRequest } from './input.js';
 
 type Db = Pick<pg.Pool, 'query'>;
 
-const ROLES: AppRole[] = ['admin', 'operation', 'mc', 'pd', 'viewer'];
+const ROLES: AppRole[] = ['admin', 'operation', 'mc', 'pd', 'video', 'viewer'];
 const POSITIONS = ['mc', 'pd', 'operation'] as const;
 const EMPLOYMENTS = ['full_time', 'intern', 'freelance', 'guest'] as const;
 

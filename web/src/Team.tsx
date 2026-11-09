@@ -3,11 +3,11 @@ import { api, type Member, type MemberInput, type Role, type User } from './api'
 import { t, type Lang, type StringKey } from './i18n';
 import { Modal, Tabs } from './ui';
 
-const ROLES: Role[] = ['admin', 'operation', 'mc', 'pd', 'viewer'];
+const ROLES: Role[] = ['admin', 'operation', 'mc', 'pd', 'video', 'viewer'];
 const POSITIONS: Member['position'][] = ['mc', 'pd', 'operation'];
 const EMPLOYMENTS: Member['employment'][] = ['full_time', 'intern', 'freelance', 'guest'];
 
-const roleLabel: Record<Role, StringKey> = { admin: 'roleAdmin', operation: 'roleOperation', mc: 'roleMc', pd: 'rolePd', viewer: 'roleViewer' };
+const roleLabel: Record<Role, StringKey> = { admin: 'roleAdmin', operation: 'roleOperation', mc: 'roleMc', pd: 'rolePd', video: 'roleVideo', viewer: 'roleViewer' };
 const posLabel = (p: Member['position']): StringKey => (p === 'operation' ? 'pos_operation' : p);
 const empLabel = (e: Member['employment']): StringKey => `emp_${e}` as StringKey;
 

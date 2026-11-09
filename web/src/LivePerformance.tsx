@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type LiveSummary, type ResultStatus, type User, isManager } from './api';
 import { t, type Lang, type StringKey } from './i18n';
-import { thisMonth } from './Hours';
-import { bkkDate, bkkTime } from './time';
+import { addDays, bkkDate, bkkTime, todayBkk } from './time';
 
 const money = (n: number | null | undefined) => (n === null || n === undefined ? '–' : n.toLocaleString('en-US', { maximumFractionDigits: 0 }));
 const one = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -14,52 +13,122 @@ const statusKey: Record<ResultStatus, StringKey> = {
   recorded: 'rsRecorded', missing: 'rsMissing', late: 'rsLate', upcoming: 'rsUpcoming', cancelled: 'cancelled',
 };
 
-/** Live performance for a month, checked in the app instead of exporting the payroll file. */
+const locale = (lang: Lang) => (lang === 'th' ? 'th-TH' : lang === 'zh' ? 'zh-CN' : 'en-GB');
+/** A Bangkok YYYY-MM-DD (or YYYY-MM) shown in the user's language. */
+const showDate = (lang: Lang, date: string, opts: Intl.DateTimeFormatOptions) =>
+  new Date(`${date.length === 7 ? `${date}-01` : date}T00:00:00Z`).toLocaleDateString(locale(lang), { ...opts, timeZone: 'UTC' });
+
+type Preset = 'thisMonth' | 'lastMonth' | 'last7' | 'last30';
+const presetKey: Record<Preset, StringKey> = { thisMonth: 'rangeThisMonth', lastMonth: 'rangeLastMonth', last7: 'rangeLast7', last30: 'rangeLast30' };
+const lastDayOf = (month: string) => addDays(`${addMonth(month, 1)}-01`, -1);
+function addMonth(month: string, n: number) {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return d.toISOString().slice(0, 7);
+}
+function presetRange(p: Preset): { from: string; to: string } {
+  const today = todayBkk();
+  const month = today.slice(0, 7);
+  if (p === 'thisMonth') return { from: `${month}-01`, to: lastDayOf(month) };
+  if (p === 'lastMonth') return { from: `${addMonth(month, -1)}-01`, to: lastDayOf(addMonth(month, -1)) };
+  return { from: addDays(today, p === 'last7' ? -6 : -29), to: today };
+}
+const MAX_DAYS = 366;
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
+
+/** Live performance for chosen dates, checked in the app instead of exporting the payroll file. */
 export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) {
-  const [month, setMonth] = useState(thisMonth());
+  const [range, setRange] = useState(() => presetRange('thisMonth'));
   const [data, setData] = useState<LiveSummary>();
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'missing'>('all');
   const manager = isManager(user.role);
+  const days = daysBetween(range.from, range.to);
+  const badRange = !range.from || !range.to || days < 1 || days > MAX_DAYS;
+  const preset = (Object.keys(presetKey) as Preset[]).find((p) => {
+    const r = presetRange(p);
+    return r.from === range.from && r.to === range.to;
+  });
 
+  // Keep showing the current numbers while the new range loads (dimmed), so the page doesn't
+  // blank out and redraw. Typing in a date box waits a moment before asking the server.
   useEffect(() => {
-    setData(undefined);
-    setFailed(false);
-    api.liveSummary(month).then(setData, () => setFailed(true));
-  }, [month]);
+    if (badRange) return;
+    let live = true;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      api.liveSummary(range.from, range.to).then(
+        (d) => {
+          if (!live) return;
+          setData(d);
+          setFailed(false);
+          setLoading(false);
+        },
+        () => {
+          if (!live) return;
+          setFailed(true);
+          setLoading(false);
+        },
+      );
+    }, data ? 250 : 0);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range.from, range.to, badRange]);
 
   const tot = data?.totals;
-  const maxDay = Math.max(1, ...(data?.daily ?? []).map((d) => d.gmv));
   // Last day results can still be recorded (the day before the cut-off), e.g. "24 ธ.ค. 2569".
-  const cutoffDay = data
-    ? new Date(new Date(data.cutoff).getTime() + 7 * 3_600_000 - 1).toLocaleDateString(lang === 'th' ? 'th-TH' : lang === 'zh' ? 'zh-CN' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
-    : '';
+  const cutoffDay = (cutoff: string) => showDate(lang, bkkDate(new Date(new Date(cutoff).getTime() - 1)), { day: 'numeric', month: 'short', year: 'numeric' });
   const sessions = (data?.sessions ?? []).filter((s) => filter === 'all' || s.status === 'missing' || s.status === 'late');
   const fines = (data?.byPerson ?? []).reduce((a, p) => a + p.deduction, 0);
   const pending = (data?.byPerson ?? []).reduce((a, p) => a + p.pendingDeduction, 0);
 
   return (
-    <div className="page fill">
+    <div className="page">
       <div className="page-head">
         <div>
           <h1>{t(lang, 'livePerf')}</h1>
           <p className="sub">{t(lang, manager ? 'livePerfHint' : 'livePerfHintMine')}</p>
         </div>
-        <div className="inline-form">
-          <label className="inline">
-            {t(lang, 'month')}
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
-          </label>
+        <div className="range-pick">
+          <div className="segmented" role="group">
+            {(Object.keys(presetKey) as Preset[]).map((p) => (
+              <button key={p} className={preset === p ? 'active' : ''} onClick={() => setRange(presetRange(p))}>
+                {t(lang, presetKey[p])}
+              </button>
+            ))}
+          </div>
+          <div className="inline-form">
+            <label>
+              {t(lang, 'dateFrom')}
+              <input type="date" value={range.from} max={range.to} onChange={(e) => e.target.value && setRange({ ...range, from: e.target.value })} />
+            </label>
+            <label>
+              {t(lang, 'dateTo')}
+              <input type="date" value={range.to} min={range.from} onChange={(e) => e.target.value && setRange({ ...range, to: e.target.value })} />
+            </label>
+          </div>
         </div>
       </div>
+      {badRange && <p className="error">{t(lang, 'rangeTooLong')}</p>}
       {failed && <p className="error">{t(lang, 'loadFailed')}</p>}
-      {!data && !failed && <p className="muted">{t(lang, 'loading')}</p>}
+      {!data && !failed && !badRange && <p className="muted">{t(lang, 'loading')}</p>}
 
-      {data && tot && (
-        <>
-          <p className={data.closed ? 'hint' : 'notice-bar'}>
-            {t(lang, data.closed ? 'cutoffClosed' : 'cutoffOpen').replace('{date}', cutoffDay).replace('{amount}', String(data.deductionAmount))}
-          </p>
+      {data && tot && !badRange && (
+        <div className={`perf-body ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
+          <div className="notices">
+          {data.months.map((m) => (
+            <p key={m.month} className={m.closed ? 'hint' : 'notice-bar'}>
+              {t(lang, m.closed ? 'cutoffClosed' : 'cutoffOpen')
+                .replace('{month}', showDate(lang, m.month, { month: 'long', year: 'numeric' }))
+                .replace('{date}', cutoffDay(m.cutoff))
+                .replace('{amount}', String(data.deductionAmount))}
+            </p>
+          ))}
+          </div>
           <div className="stat-cards">
             <section className="stat-card">
               <div className="stat-label">GMV ({t(lang, 'screenPreRefund')})</div>
@@ -91,15 +160,11 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
 
           {data.daily.length > 0 && (
             <section>
-              <h2>{t(lang, 'gmvByDay')}</h2>
-              <div className="day-bars" role="img" aria-label={t(lang, 'gmvByDay')}>
-                {data.daily.map((d) => (
-                  <div key={d.date} className="day-bar" title={`${d.date}: ฿${money(d.gmv)}`}>
-                    <span className={d.gmv ? '' : 'zero'} style={{ height: `${(d.gmv / maxDay) * 100}%` }} />
-                    <small>{Number(d.date.slice(8))}</small>
-                  </div>
-                ))}
+              <div className="section-head">
+                <h2>{t(lang, 'gmvByDay')}</h2>
+                <span className="hint">{t(lang, 'gmvByDayHint')}</span>
               </div>
+              <DayChart lang={lang} daily={data.daily} />
             </section>
           )}
 
@@ -172,7 +237,7 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
             </section>
           )}
 
-          <section className="grow">
+          <section>
             <div className="section-head">
               <h2>{t(lang, 'sessionList')}</h2>
               <div className="segmented" role="group">
@@ -221,7 +286,56 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
               </div>
             )}
           </section>
-        </>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** GMV per day as bars. Hover (or tap on a phone) shows the day's GMV, orders and sessions. */
+function DayChart({ lang, daily }: { lang: Lang; daily: LiveSummary['daily'] }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<{ i: number; x: number }>();
+  const max = Math.max(1, ...daily.map((d) => d.gmv));
+  const many = daily.length > 31;
+  const show = (i: number, el: HTMLElement) => {
+    const box = wrap.current?.getBoundingClientRect();
+    const bar = el.getBoundingClientRect();
+    if (box) setTip({ i, x: bar.left - box.left + bar.width / 2 });
+  };
+  const d = tip ? daily[tip.i] : undefined;
+  const width = wrap.current?.clientWidth ?? 0;
+
+  return (
+    <div className="day-chart" ref={wrap} onMouseLeave={() => setTip(undefined)}>
+      <div className="day-max hint">฿{money(max)}</div>
+      <div className="day-bars" role="img" aria-label={t(lang, 'gmvByDay')} onScroll={() => setTip(undefined)}>
+        {daily.map((x, i) => {
+          const first = x.date.endsWith('-01');
+          // Long ranges: label the 1st of each month and every 7th day so labels don't overlap.
+          const label = !many || first || Number(x.date.slice(8)) % 7 === 0;
+          return (
+            <div
+              key={x.date}
+              className={`day-bar ${tip?.i === i ? 'on' : ''}`}
+              aria-label={`${x.date}: ฿${money(x.gmv)}`}
+              onMouseEnter={(e) => show(i, e.currentTarget)}
+              onClick={(e) => (tip?.i === i ? setTip(undefined) : show(i, e.currentTarget))}
+            >
+              <span className={x.gmv ? '' : 'zero'} style={{ height: `${(x.gmv / max) * 100}%` }} />
+              {label && <small>{first && (many || daily[0].date.slice(0, 7) !== daily[daily.length - 1].date.slice(0, 7)) ? `${Number(x.date.slice(8))}/${Number(x.date.slice(5, 7))}` : Number(x.date.slice(8))}</small>}
+            </div>
+          );
+        })}
+      </div>
+      {d && tip && (
+        <div className="day-tip" style={{ left: Math.min(Math.max(tip.x, 80), Math.max(80, width - 80)) }}>
+          <strong>{showDate(lang, d.date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</strong>
+          <div className="day-tip-gmv">GMV ฿{money(d.gmv)}</div>
+          <div className="muted">
+            {money(d.orders)} {t(lang, 'm_orders')} · {d.sessions} {t(lang, 'sessionsCount')}
+          </div>
+        </div>
       )}
     </div>
   );

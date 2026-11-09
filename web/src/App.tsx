@@ -10,22 +10,33 @@ import { MySchedule } from './MySchedule';
 import { ResultsPage } from './Results';
 import { LivePerformancePage } from './LivePerformance';
 import { TeamPage } from './Team';
+import { ContentShootsPage } from './ContentShoots';
 import { PreferencesPage } from './Preferences';
 import { initialLang, languageLabel, languages, t, type Lang, type StringKey } from './i18n';
 
 // Pages each role sees, in nav order. MC/PD get the first four in the phone's bottom bar too.
 // Operation runs everything the master admin does except the team list.
-const operationPages: StringKey[] = ['schedule', 'leave', 'offDays', 'results', 'livePerf', 'attendance', 'hours', 'prefsNav'];
+const operationPages: StringKey[] = ['schedule', 'shootsNav', 'leave', 'offDays', 'results', 'livePerf', 'attendance', 'hours', 'prefsNav'];
 const adminPages: StringKey[] = [...operationPages, 'team'];
 const teamPages: StringKey[] = ['mySchedule', 'clockNav', 'schedule', 'leave', 'results', 'livePerf', 'hours', 'prefsNav'];
 const viewerPages: StringKey[] = ['schedule', 'hours', 'prefsNav'];
+// Video operation books content shoots; the live schedule is there to look at.
+const videoPages: StringKey[] = ['shootsNav', 'schedule'];
 /** Phone bottom bar: this many pages, then a "More" button for the rest. */
 const BOTTOM_SLOTS = 4;
 const pagesFor = (role?: Role) =>
-  role === 'admin' ? adminPages : role === 'operation' ? operationPages : role === 'mc' || role === 'pd' ? teamPages : viewerPages;
+  role === 'admin'
+    ? adminPages
+    : role === 'operation'
+      ? operationPages
+      : role === 'mc' || role === 'pd'
+        ? teamPages
+        : role === 'video'
+          ? videoPages
+          : viewerPages;
 type Health = 'checking' | 'ok' | 'down';
 
-const roleKey: Record<Role, StringKey> = { admin: 'roleAdmin', operation: 'roleOperation', mc: 'roleMc', pd: 'rolePd', viewer: 'roleViewer' };
+const roleKey: Record<Role, StringKey> = { admin: 'roleAdmin', operation: 'roleOperation', mc: 'roleMc', pd: 'rolePd', video: 'roleVideo', viewer: 'roleViewer' };
 
 // A dev user saved from an earlier database may no longer exist; fall back to the default once.
 async function loadMe(): Promise<Me> {
@@ -81,6 +92,7 @@ export function App() {
       .then((m) => {
         setMe(m);
         if (m.user.role === 'mc' || m.user.role === 'pd') setPage('mySchedule');
+        if (m.user.role === 'video') setPage('shootsNav');
         return Promise.all([api.rooms(), api.people()]);
       })
       .then(
@@ -212,6 +224,8 @@ export function App() {
           />
         ) : page === 'results' && rooms && people && me ? (
           <ResultsPage lang={lang} rooms={rooms} people={people} user={me.user} aiReader={Boolean(me.aiReader)} />
+        ) : page === 'shootsNav' && rooms && people && me ? (
+          <ContentShootsPage lang={lang} rooms={rooms} people={people} user={me.user} />
         ) : page === 'livePerf' && me ? (
           <LivePerformancePage lang={lang} user={me.user} />
         ) : page === 'offDays' && isManager(me?.user.role) ? (

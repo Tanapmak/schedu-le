@@ -12,6 +12,7 @@ import {
   type Db,
   type SessionInput,
 } from './store.js';
+import { shootClashesForLive } from './shoots.js';
 
 /** Start and end (exclusive) of the Bangkok month a date falls in. */
 export function monthRange(d: Date): { from: Date; to: Date } {
@@ -37,7 +38,7 @@ export async function checkAgainstDb(db: Db, session: Session): Promise<Violatio
   const sessions = await sessionsBetween(db, from, to);
   const leaves = await leavesBetween(db, session.start, session.end);
   const holidays = await holidaysBetween(db, session.start, session.end);
-  return checkSession(session, {
+  const violations = checkSession(session, {
     rules,
     room,
     people: new Map(people.map((p) => [p.id, p])),
@@ -45,6 +46,12 @@ export async function checkAgainstDb(db: Db, session: Session): Promise<Violatio
     leaves,
     holidays,
   });
+  // Someone booked for a content shoot at this time: a warning, the shoot needs moving.
+  if (session.status !== 'cancelled') {
+    const staffIds = session.staff.filter((x) => !x.replaced).map((x) => x.personId);
+    violations.push(...(await shootClashesForLive(db, staffIds, session.start, session.end)));
+  }
+  return violations;
 }
 
 export type SaveResult =

@@ -417,6 +417,18 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const mine = (await call('GET', '/api/results/summary?month=2020-05', undefined, 'mc.b@example.com')).body;
     expect(mine).toMatchObject({ totals: { sessions: 0 }, byPerson: [] });
 
+    // A date range: only those days count, each day is in the chart, and cut-offs follow each session's month.
+    const day = (await call('GET', '/api/results/summary?from=2020-05-11&to=2020-05-11')).body;
+    expect(day).toMatchObject({ totals: { gmv: 700, ended: 1, recorded: 1, missing: 0 }, months: [{ month: '2020-05', closed: true }] });
+    expect(day.daily).toEqual([{ date: '2020-05-11', gmv: 700, orders: 0, sessions: 1 }]);
+    const span = (await call('GET', '/api/results/summary?from=2020-04-30&to=2020-06-01')).body;
+    expect(span.totals).toMatchObject({ gmv: 700, sessions: 2, missing: 1 });
+    expect(span.daily).toHaveLength(33);
+    expect(span.months.map((m: { month: string }) => m.month)).toEqual(['2020-04', '2020-05', '2020-06']);
+    expect(span.byPerson.find((p: { nickname: string }) => p.nickname === 'PD A')).toMatchObject({ missing: 2, deduction: 1000 });
+    expect((await call('GET', '/api/results/summary?from=2020-05-12&to=2020-05-11')).status).toBe(400);
+    expect((await call('GET', '/api/results/summary?from=2020-01-01&to=2021-06-01')).status).toBe(400);
+
     // The payroll workbook carries the deduction and a list of missing results.
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await (await fetch(`${base}/api/export/payroll?month=2020-05`)).arrayBuffer()) as unknown as ExcelJS.Buffer);

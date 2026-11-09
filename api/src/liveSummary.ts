@@ -34,10 +34,20 @@ export interface SummarySession {
   fined: boolean;
 }
 
-export async function monthSummary(db: Db, month: string, now: Date, viewer: { id: number; role: AppRole }) {
+type Viewer = { id: number; role: AppRole };
+
+/** One month: the payroll file and the month view use this. */
+export async function monthSummary(db: Db, month: string, now: Date, viewer: Viewer) {
   const { from, to } = monthRange(new Date(`${month}-15T00:00:00+07:00`));
   const cutoff = recordCutoff(from);
-  const closed = now >= cutoff;
+  return { month, cutoff, closed: now >= cutoff, ...(await rangeSummary(db, from, to, now, viewer)) };
+}
+
+/**
+ * Live performance for sessions starting in [from, to). The range may cross months:
+ * each session follows its own month's cut-off (25th of the next month).
+ */
+export async function rangeSummary(db: Db, from: Date, to: Date, now: Date, viewer: Viewer) {
   const people = new Map((await listPeople(db)).map((p) => [p.id, p]));
   const rooms = new Map((await listRooms(db)).map((r) => [r.id, r]));
   const manager = isManager(viewer.role);
@@ -61,7 +71,7 @@ export async function monthSummary(db: Db, month: string, now: Date, viewer: { i
     const staff = s.staff.filter((x) => !x.replaced);
     const status: ResultStatus =
       s.status === 'cancelled' ? 'cancelled'
-        : m && m.n > 0 ? (m.first >= cutoff ? 'late' : 'recorded')
+        : m && m.n > 0 ? (m.first >= recordCutoff(s.start) ? 'late' : 'recorded')
           : s.end > now ? 'upcoming'
             : 'missing';
     const responsible = staff
@@ -83,7 +93,7 @@ export async function monthSummary(db: Db, month: string, now: Date, viewer: { i
       edited: Boolean(m?.edited),
       status,
       responsible,
-      fined: closed && (status === 'missing' || status === 'late'),
+      fined: now >= recordCutoff(s.start) && (status === 'missing' || status === 'late'),
     };
   });
 
@@ -135,18 +145,32 @@ export async function monthSummary(db: Db, month: string, now: Date, viewer: { i
     })
     .sort((a, b) => b.gmvMc + b.gmvPd - (a.gmvMc + a.gmvPd));
 
-  const daily = new Map<string, number>();
-  for (const s of live) daily.set(bangkokDate(s.start), (daily.get(bangkokDate(s.start)) ?? 0) + (s.gmv ?? 0));
+  // Every day of the range, so the chart has no gaps (days without a live show as 0).
+  const daily = new Map<string, { gmv: number; orders: number; sessions: number }>();
+  for (let d = from.getTime(); d < to.getTime(); d += 86_400_000) daily.set(bangkokDate(new Date(d)), { gmv: 0, orders: 0, sessions: 0 });
+  for (const s of live) {
+    const day = daily.get(bangkokDate(s.start));
+    if (!day) continue;
+    day.gmv += s.gmv ?? 0;
+    day.orders += s.orders ?? 0;
+    day.sessions += 1;
+  }
+
+  // Each month the range touches, with its record cut-off.
+  const months = [...new Set([...daily.keys()].map((d) => d.slice(0, 7)))].map((month) => {
+    const cutoff = recordCutoff(new Date(`${month}-15T00:00:00+07:00`));
+    return { month, cutoff, closed: now >= cutoff };
+  });
 
   return {
-    month,
-    cutoff,
-    closed,
+    from,
+    to,
+    months,
     deductionAmount: FORGOT_RECORD_DEDUCTION,
     totals,
     byRoom,
     byPerson,
-    daily: [...daily].sort(([a], [b]) => a.localeCompare(b)).map(([date, gmv]) => ({ date, gmv })),
+    daily: [...daily].map(([date, d]) => ({ date, ...d })),
     sessions: list,
   };
 }
