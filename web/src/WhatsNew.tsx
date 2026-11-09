@@ -13,6 +13,8 @@ type Text = Record<Lang, string>;
 interface Item {
   title: Text;
   body: Text;
+  /** Short "if this, then that" lines under the body. */
+  examples?: Record<Lang, string[]>;
   /** Only admin / operation see it. */
   managers?: boolean;
 }
@@ -39,19 +41,39 @@ const items: Item[] = [
     },
   },
   {
-    title: { th: 'ได้ชั่วโมงเมื่อไหร่', en: 'When the hours count', zh: '何时计工时' },
+    title: { th: 'ลาด่วนแล้วคิวถูกยกเลิก ได้ชั่วโมงไหม', en: 'Urgent leave, session cancelled: do I get the hours?', zh: '紧急请假导致场次取消，计工时吗？' },
     body: {
-      th: 'ป่วย / อุบัติเหตุ / ครอบครัวฉุกเฉิน: ได้ชั่วโมงของคิวที่ถูกยกเลิก ถ้าวันนั้นไม่ได้กลับมาทำงานอีก ส่วนธุระด่วน อื่น ๆ และลาปกติไม่ได้ชั่วโมง ถ้ามีคนแทน คนแทนได้ชั่วโมง',
-      en: 'Sick / accident / family emergency: you earn the cancelled session\'s hours if you do not work again that day. Personal errands, other reasons and normal leave earn none. If someone covers, they earn the hours.',
-      zh: '生病/意外/家庭紧急情况：当天未再上班则计取消场次的工时。私事、其他原因和普通请假不计。有人替班则由替班者计工时。',
+      th: 'ตัวอย่าง: มีคิว 15:00 และ 20:00 แล้วลาด่วนคิว 15:00 จนคิวถูกยกเลิก',
+      en: 'Example: you have sessions at 15:00 and 20:00, take urgent leave from the 15:00 one, and it is cancelled.',
+      zh: '例子：你有15:00和20:00两场，15:00那场紧急请假，该场被取消。',
+    },
+    examples: {
+      th: [
+        '✅ ลาป่วย / อุบัติเหตุ / ครอบครัวฉุกเฉิน แล้ววันนั้นไม่ได้ทำงานอีกเลย → ได้ชั่วโมงคิว 15:00',
+        '❌ ลาป่วย แต่ยังมาไลฟ์คิว 20:00 → คิว 15:00 ไม่ได้ชั่วโมง (คิว 20:00 ได้ตามปกติ)',
+        '❌ ลาธุระด่วน / เหตุผลอื่น / ลาปกติ → คิว 15:00 ไม่ได้ชั่วโมง',
+        '👥 คนที่ไม่ได้ลา (เช่นคู่ไลฟ์) → ได้ชั่วโมงตามปกติ ถ้ามีคนมาแทน คนแทนได้ชั่วโมง',
+      ],
+      en: [
+        '✅ Sick / accident / family emergency, and you do not work again that day → you get the 15:00 hours',
+        '❌ Sick, but you still go live at 20:00 → no hours for 15:00 (20:00 counts as normal)',
+        '❌ Personal errand / other reason / normal leave → no hours for 15:00',
+        '👥 People not on leave (e.g. your partner) → hours as normal. If someone covers, they get the hours',
+      ],
+      zh: [
+        '✅ 生病/意外/家庭紧急情况，且当天没再上班 → 15:00那场计工时',
+        '❌ 请病假，但20:00照常直播 → 15:00那场不计工时（20:00照常计）',
+        '❌ 私事/其他原因/普通请假 → 15:00那场不计工时',
+        '👥 没请假的人（如搭档）→ 照常计工时；有人替班则由替班者计工时',
+      ],
     },
   },
   {
-    title: { th: '"กลับมาทำงาน" คืออะไร', en: 'What "worked again" means', zh: '什么算“又上班”' },
+    title: { th: 'ทำไมขึ้นว่า "รอสรุป"', en: 'Why it says "Pending"', zh: '为什么显示“待定”' },
     body: {
-      th: 'นับตั้งแต่เวลาเริ่มคิวที่ลา จนถึง 06:00 ของวันถัดไป ถ้าคุณ clock in หรือได้ไลฟ์คิวอื่น ถือว่ากลับมาทำงานแล้ว คุณจะไม่ได้ชั่วโมงของคิวที่ลาไป (คิวที่ถูกยกเลิก) แต่คิวที่กลับมาทำยังได้ชั่วโมงตามปกติ ก่อนถึง 06:00 ชั่วโมงของคิวที่ลาจะขึ้นว่า "รอสรุป" และยังไม่นับเข้า KPI',
-      en: 'From the start of the session you took leave from until 06:00 next morning, clocking in or going live in another session counts as working again. You then get no hours for the session you left (the cancelled one), but the session you came back for still earns its hours as normal. Until 06:00 the left session shows "Pending" and is not counted in KPI.',
-      zh: '从请假场次开始到次日06:00，如打卡或参加其他场次直播，即算又上班：请假的那一场（已取消的场次）不计工时，但回来上班的场次照常计工时。06:00之前，请假场次显示“待定”，不计入KPI。',
+      th: 'ระบบต้องรอดูว่าวันนั้นคุณกลับมาทำงานหรือเปล่า (clock in หรือได้ไลฟ์คิวอื่น) จึงสรุปตอน 06:00 ของวันถัดไป ระหว่างรอยังไม่นับเข้า KPI',
+      en: 'The system waits to see whether you work again that day (clock in or go live in another session), so it decides at 06:00 next morning. Until then it is not counted in KPI.',
+      zh: '系统要看你当天是否又上班（打卡或参加其他场次直播），所以在次日06:00才确定。在此之前不计入KPI。',
     },
   },
   {
@@ -113,6 +135,13 @@ export function WhatsNewBox({ lang, manager, onClose }: { lang: Lang; manager: b
               <li key={i.title.en}>
                 <strong>{i.title[lang]}</strong>
                 <p>{i.body[lang]}</p>
+                {i.examples && (
+                  <ul className="whats-new-examples">
+                    {i.examples[lang].map((e) => (
+                      <li key={e}>{e}</li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
         </ol>

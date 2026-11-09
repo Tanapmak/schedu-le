@@ -696,3 +696,4 @@ table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
 .whats-new p { margin: 0; }
 .whats-new ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
 .whats-new li p { color: var(--muted); font-size: 13px; }
+.whats-new-examples { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
