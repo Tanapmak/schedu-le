@@ -684,3 +684,39 @@ table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
 @media (max-width: 640px) { .range-pick { justify-content: flex-start; } .range-pick .segmented { overflow-x: auto; } }
 .day-bar span.zero { background: var(--gray-medium); }
 .table-wrap + .hint { margin-top: 8px; }
+
+/* ---- Content shoots (video operation) ---- */
+.shoots-page .page-head { margin-bottom: 12px; }
+.person-lane { min-height: 60px; }
+.person-lane.read-only { cursor: default; }
+/* The person's lives: background bars a shoot must keep clear of */
+.live-bg {
+  position: absolute; top: 4px; bottom: 4px; z-index: 0; pointer-events: none; border-radius: 8px; overflow: hidden;
+  background: repeating-linear-gradient(135deg, var(--gray-light) 0 6px, #f7f7f7 6px 12px); border: 1px solid #ddd;
+  display: flex; align-items: flex-end; padding: 0 8px 4px; font-size: 11px; color: var(--gray-dark); white-space: nowrap;
+}
+.live-bg.draft { border-style: dashed; }
+.live-bg span { overflow: hidden; text-overflow: ellipsis; }
+.shoot-pos { z-index: 1; }
+.chip.shoot { background: #1f1f1f; color: #fff; }
+.chip.shoot .when { color: #d0d0d0; }
+.chip.shoot.clash { background: var(--red); box-shadow: 0 0 0 2px var(--scarlet); }
+.chip.shoot.clash .when { color: #ffe0e0; }
+.chip.shoot .leave-flag { color: #fff; }
+.legend i.shoot { background: #1f1f1f; }
+.legend i.shoot.clash { background: var(--red); }
+.legend i.live-bg { position: static; background: repeating-linear-gradient(135deg, var(--gray-light) 0 3px, #f7f7f7 3px 6px); border: 1px solid #ddd; padding: 0; }
+.shoots-week td { vertical-align: top; min-width: 120px; }
+.live-mini { display: block; font-size: 11px; color: var(--gray-dark); background: var(--gray-light); border-radius: 6px; padding: 2px 6px; margin-bottom: 4px; white-space: nowrap; }
+fieldset.form-grid.plain { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.person-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.person-picks .pick { border: 1px solid var(--line); border-radius: 9999px; padding: 6px 12px; background: #fff; color: var(--ink); font-size: 13px; }
+.person-picks .pick small { color: var(--gray-medium); font-size: 10px; }
+.person-picks .pick.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.person-picks .pick.on small { color: #ccc; }
+.person-picks .pick.blocked { background: var(--red); border-color: var(--red); }
+.shoot-card .day-body strong { overflow-wrap: anywhere; }
+/* Next content shoot: same card as the next live, in black so the two never get mixed up */
+.next-live.next-shoot { background: var(--ink); cursor: pointer; }
+.next-shoot .shoot-title { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }

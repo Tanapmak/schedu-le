@@ -38,7 +38,14 @@ Each person signs in with their Google account. `people.email` links the account
 |---|---|
 | `admin` (master admin) | Everything `operation` can do, plus the **Team** page: add members, set their role, archive people who left. The app never lets the last active admin be demoted or archived, and an admin cannot demote or archive themselves. |
 | `operation` | Run the schedule: add, change, cancel and publish sessions (sees drafts), decide leave and swaps, team off days, results, attendance, hours and the payroll export. |
+| `video` (video operation) | The **Content shoots** page: book MC/PD for video shoots on a drag-and-resize board (lanes = people, their lives shown as gray bars). See the live schedule read-only. Admin and operation can use the shoots page too. |
 | `mc`, `pd`, `viewer` | See the published schedule; their own sessions are marked. File leave and swap requests, see their own hours, record results for their own sessions. |
+
+Content shoot rules (checked on every save, `api/src/shoots.ts`): a shoot can't overlap a **published** live of anyone
+in it, nor another shoot of the same person (also a database constraint), nor approved leave. A draft live, pending
+leave or a team off day is a warning that can be confirmed. The other way round, saving a live over someone's shoot
+gives the admin a `live_shoot_clash` warning, and the shoot turns red on the shoots board until it is moved.
+MC/PD see their own shoots in the "Content shoots" tab of My schedule.
 
 `AUTH_MODE` picks how the API learns who is calling:
 

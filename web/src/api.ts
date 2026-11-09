@@ -148,7 +148,31 @@ export interface HoursRow {
   vsKpi: number | null;
 }
 
-export type Role = 'admin' | 'operation' | 'mc' | 'pd' | 'viewer';
+export type Role = 'admin' | 'operation' | 'mc' | 'pd' | 'video' | 'viewer';
+
+/** Who plans content shoots: video operation, plus admin and operation. */
+export const canPlanShoots = (role: Role | undefined) => role === 'video' || role === 'admin' || role === 'operation';
+
+export interface Shoot {
+  id: number;
+  title: string;
+  start: string;
+  end: string;
+  location: string | null;
+  note: string | null;
+  personIds: number[];
+  createdBy: string | null;
+  updatedAt: string;
+}
+
+export interface ShootInput {
+  title: string;
+  start: string;
+  end: string;
+  location?: string | null;
+  note?: string | null;
+  personIds: number[];
+}
 
 /** Admin (master) and operation both run the schedule; only admin manages the team. */
 export const isManager = (role: Role | undefined) => role === 'admin' || role === 'operation';
@@ -569,6 +593,13 @@ export const api = {
   studios: async () => (await request<Studio[]>('GET', '/api/studios')).data,
   saveStudio: async (s: Omit<Studio, 'id'> & { id?: number }) => (await request<{ ok: boolean; id: number }>('POST', '/api/studios', s)).data,
   deleteResult: async (id: number) => (await request<{ ok: boolean; error?: string }>('DELETE', `/api/results/${id}`)).data,
+  shoots: async (from: Date, to: Date, mine = false) =>
+    (await request<Shoot[]>('GET', `/api/shoots?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}${mine ? '&mine=1' : ''}`)).data,
+  checkShoot: async (input: ShootInput & { id?: number }) =>
+    (await request<{ violations: ViolationLike[] }>('POST', '/api/shoots/check', input)).data.violations ?? [],
+  saveShoot: async (input: ShootInput, opts: { id?: number; confirm?: boolean }) =>
+    (await request<SaveResponse>(opts.id ? 'PUT' : 'POST', opts.id ? `/api/shoots/${opts.id}` : '/api/shoots', { ...input, confirm: opts.confirm })).data,
+  deleteShoot: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/shoots/${id}`)).data,
   publish: async (from: Date, to: Date) =>
     (await request<{ published: number }>('POST', '/api/publish', { from: from.toISOString(), to: to.toISOString() })).data,
 };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type LeaveRequest, type Person, type Holiday, type Room, type Session, type SwapRequest, type User, isManager } from './api';
-import { t, type Lang } from './i18n';
+import { api, type LeaveRequest, type Person, type Holiday, type Room, type Session, type Shoot, type SwapRequest, type User, isManager } from './api';
+import { t, type Lang, type StringKey } from './i18n';
 import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
 import { SwapForm } from './SwapForm';
@@ -26,13 +26,19 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
   const [failed, setFailed] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [swapFor, setSwapFor] = useState<Session>();
-  const [tab, setTab] = useState<'upcoming' | 'requests'>('upcoming');
+  const [tab, setTab] = useState<'upcoming' | 'shoots' | 'requests'>('upcoming');
+  const [shoots, setShoots] = useState<Shoot[]>();
   const [holidays, setHolidays] = useState<Holiday[]>([]);
 
   const load = useCallback(() => {
     const from = bkkInstant(todayBkk(), '00:00');
     const to = bkkInstant(addDays(todayBkk(), WEEKS_AHEAD * 7), '00:00');
     setFailed(false);
+    // Content shoots booked by video operation for me (an older server without them just shows none).
+    api.shoots(from, to, true).then(
+      (list) => setShoots(list.filter((x) => new Date(x.end).getTime() > Date.now())),
+      () => setShoots([]),
+    );
     Promise.all([api.board(from, to), api.leave({ mine: true }), api.swaps({ mine: true })]).then(([b, l, s]) => {
       setSessions(b.sessions.filter((x) => x.status === 'published' && new Date(x.end).getTime() > Date.now()));
       setHolidays(b.holidays);
@@ -75,6 +81,7 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
       </div>
 
       {next && <NextLive lang={lang} session={next} meId={user.id} nameOf={nameOf} codeOf={codeOf} onSwap={() => setSwapFor(next)} swapPending={pendingSwap.has(next.id)} />}
+      {shoots && shoots.length > 0 && <NextShoot lang={lang} shoot={shoots[0]} meId={user.id} nameOf={nameOf} onOpen={() => setTab('shoots')} />}
       {children}
 
       <Tabs
@@ -82,7 +89,8 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
         value={tab}
         onChange={setTab}
         tabs={[
-          { key: 'upcoming', label: t(lang, 'upcoming') },
+          { key: 'upcoming', label: `${t(lang, 'upcomingLives')}${sessions ? ` (${mine.length})` : ''}` },
+          { key: 'shoots', label: `${t(lang, 'upcomingShoots')}${shoots?.length ? ` (${shoots.length})` : ''}` },
           { key: 'requests', label: `${t(lang, 'myRequests')}${pendingRequests ? ` (${pendingRequests})` : ''}` },
         ]}
       />
@@ -135,6 +143,8 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
             )}
           </ul>
         </section>
+      ) : tab === 'shoots' ? (
+        <ShootList lang={lang} shoots={shoots} meId={user.id} nameOf={nameOf} />
       ) : (
         <section>
           <RequestList lang={lang} user={user} people={people} rooms={rooms} leave={leave} swaps={swaps} cards onChanged={load} />
@@ -167,6 +177,38 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
           onSaved={() => (setSwapFor(undefined), load())}
         />
       )}
+    </div>
+  );
+}
+
+/** When something starts, as "in 2 h 5 min" today or the weekday and date further out. */
+function startsIn(lang: Lang, start: Date, nowKey: StringKey) {
+  const mins = Math.round((start.getTime() - Date.now()) / 60_000);
+  return mins <= 0
+    ? t(lang, nowKey)
+    : mins < 24 * 60
+      ? mins < 60
+        ? t(lang, 'inMinutes').replace('{m}', String(mins))
+        : t(lang, 'inTime').replace('{h}', String(Math.floor(mins / 60))).replace('{m}', String(mins % 60))
+      : formatDay(bkkDate(start), lang, { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+/** My next content shoot, under the next live. A tap opens the shoots tab. */
+function NextShoot({ lang, shoot: s, meId, nameOf, onOpen }: { lang: Lang; shoot: Shoot; meId: number; nameOf: (id: number) => string; onOpen: () => void }) {
+  const start = new Date(s.start);
+  const partners = s.personIds.filter((id) => id !== meId).map(nameOf);
+  return (
+    <div className="next-live next-shoot" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}>
+      <small>
+        {t(lang, 'nextShoot')} · {startsIn(lang, start, 'shootingNow')}
+      </small>
+      <strong>
+        {bkkTime(start)}–{bkkTime(new Date(s.end))}
+      </strong>
+      <span className="shoot-title">{s.title}</span>
+      <span>
+        {[s.location, partners.length > 0 ? `${t(lang, 'with')} ${partners.join(', ')}` : ''].filter(Boolean).join(' · ')}
+      </span>
     </div>
   );
 }
@@ -219,5 +261,48 @@ function NextLive({
         </div>
       )}
     </div>
+  );
+}
+
+/** My upcoming content shoots, grouped by day like the lives. */
+function ShootList({ lang, shoots, meId, nameOf }: { lang: Lang; shoots?: Shoot[]; meId: number; nameOf: (id: number) => string }) {
+  if (!shoots) return <p className="muted">{t(lang, 'loading')}</p>;
+  if (shoots.length === 0) return <p className="muted">{t(lang, 'noUpcomingShoots')}</p>;
+  let lastDay = '';
+  return (
+    <section>
+      <ul className="day-cards">
+        {shoots.map((s) => {
+          const start = new Date(s.start);
+          const day = liveDate(start);
+          const first = day !== lastDay;
+          lastDay = day;
+          const partners = s.personIds.filter((id) => id !== meId).map(nameOf);
+          return (
+            <li key={s.id} className="shoot-card">
+              <div className="day-badge">
+                {first && (
+                  <>
+                    <small>{formatDay(day, lang, { weekday: 'short' })}</small>
+                    <strong>{Number(day.slice(8))}</strong>
+                  </>
+                )}
+              </div>
+              <div className="day-body">
+                <strong>
+                  {bkkTime(start)}–{bkkTime(new Date(s.end))} · {s.title}
+                </strong>
+                <small className="muted">
+                  {hoursBetween(start, new Date(s.end))} {t(lang, 'hoursSuffix')}
+                  {s.location && ` · ${s.location}`}
+                  {partners.length > 0 && ` · ${t(lang, 'with')} ${partners.join(', ')}`}
+                </small>
+                {s.note && <small className="muted">{s.note}</small>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

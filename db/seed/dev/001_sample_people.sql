@@ -13,3 +13,8 @@ ON CONFLICT (nickname) DO NOTHING;
 INSERT INTO people (nickname, email, position, app_role) VALUES
   ('Ops Dev', 'ops@example.com', 'operation', 'operation')
 ON CONFLICT (nickname) DO NOTHING;
+
+-- Video operation role (value from migration 013): plans content shoots.
+INSERT INTO people (nickname, email, position, app_role) VALUES
+  ('Video Dev', 'video@example.com', 'operation', 'video')
+ON CONFLICT (nickname) DO NOTHING;
