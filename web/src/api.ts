@@ -245,14 +245,15 @@ export interface FlagInfo {
 
 export type ResultStatus = 'upcoming' | 'recorded' | 'missing' | 'late' | 'cancelled';
 export interface LiveSummary {
-  month: string;
-  cutoff: string;
-  closed: boolean;
+  from: string;
+  to: string;
+  /** Each month the range touches, with its record cut-off. */
+  months: { month: string; cutoff: string; closed: boolean }[];
   deductionAmount: number;
   totals: { gmv: number; orders: number; hours: number; sessions: number; ended: number; recorded: number; missing: number };
   byRoom: { roomId: number; roomCode: string; sessions: number; hours: number; gmv: number; gmvPerHour: number | null; missing: number }[];
   byPerson: { personId: number; nickname: string; sessions: number; hours: number; gmvMc: number; gmvPd: number; missing: number; deduction: number; pendingDeduction: number }[];
-  daily: { date: string; gmv: number }[];
+  daily: { date: string; gmv: number; orders: number; sessions: number }[];
   sessions: {
     id: number; start: string; end: string; roomId: number; roomCode: string; mc: string[]; pd: string[]; hours: number;
     gmv: number | null; orders: number | null; readings: number; edited: boolean; status: ResultStatus; responsible: number[]; fined: boolean;
@@ -518,7 +519,8 @@ export const api = {
     request<{ ok: boolean; id: number; message?: string; error?: string }>('PUT', `/api/results/${id}`, input),
   resultImage: async (id: number) =>
     (await request<{ url: string; width: number | null; height: number | null; boxes: ReadingBox[] }>('GET', `/api/results/${id}/image`)).data,
-  liveSummary: async (month: string) => (await request<LiveSummary>('GET', `/api/results/summary?month=${month}`)).data,
+  /** Both dates included (YYYY-MM-DD, Bangkok). */
+  liveSummary: async (from: string, to: string) => (await request<LiveSummary>('GET', `/api/results/summary?from=${from}&to=${to}`)).data,
   results: async (from: Date, to: Date) =>
     (await request<ResultRow[]>('GET', `/api/results?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)).data,
   myAttendance: async () => (await request<MyAttendance>('GET', '/api/attendance/me')).data,
