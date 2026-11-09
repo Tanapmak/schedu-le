@@ -20,6 +20,7 @@ import { claudeReader, normalizeBoxes, type ImageMediaType, type ScreenshotReade
 import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
+import { canPlanShoots, checkShoot, deleteShoot, parseShootInput, saveShoot, shootsBetween } from './shoots.js';
 
 const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const decisionOf = (v: unknown) => {
@@ -301,6 +302,42 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
       [from, to],
     );
     res.json({ published: rowCount });
+  });
+
+  // ---- Content shoots: video operation books MC/PD for video shoots, never over their lives.
+  const requireShootPlanner = (req: Request, res: Response, next: NextFunction) => {
+    if (canPlanShoots(req.user?.role)) next();
+    else res.status(403).json({ error: 'video_only' });
+  };
+
+  // Everyone can read (MC/PD see their own queue); ?mine=1 keeps only the user's shoots.
+  app.get('/api/shoots', async (req, res) => {
+    const from = parseDate(req.query.from, 'from');
+    const to = parseDate(req.query.to, 'to');
+    if (to <= from || to.getTime() - from.getTime() > MAX_RANGE_DAYS * 86_400_000) throw new BadRequest('bad range');
+    const mine = req.query.mine === '1' || !(canPlanShoots(req.user!.role) || req.user!.role === 'viewer');
+    res.json(await shootsBetween(pool, from, to, mine ? req.user!.id : undefined));
+  });
+
+  app.post('/api/shoots/check', requireShootPlanner, async (req, res) => {
+    const id = req.body.id === undefined ? undefined : parseId(req.body.id, 'id');
+    res.json({ violations: await checkShoot(pool, parseShootInput(req.body), id) });
+  });
+
+  app.post('/api/shoots', requireShootPlanner, async (req, res) => {
+    const out = await saveShoot(pool, parseShootInput(req.body), { confirm: req.body.confirm === true, actorId: req.user!.id });
+    res.status(out.ok ? 201 : out.status).json(out);
+  });
+
+  app.put('/api/shoots/:id', requireShootPlanner, async (req, res) => {
+    const id = parseId(req.params.id, 'id');
+    const out = await saveShoot(pool, parseShootInput(req.body), { id, confirm: req.body.confirm === true, actorId: req.user!.id });
+    res.status(out.ok ? 200 : out.status).json(out);
+  });
+
+  app.delete('/api/shoots/:id', requireShootPlanner, async (req, res) => {
+    const ok = await deleteShoot(pool, parseId(req.params.id, 'id'), req.user!.id);
+    res.status(ok ? 200 : 404).json({ ok });
   });
 
   // ---- Hours vs KPI for a month. The team sees only their own row.

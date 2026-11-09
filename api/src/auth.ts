@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import type pg from 'pg';
 
-export type AppRole = 'admin' | 'operation' | 'mc' | 'pd' | 'viewer';
+export type AppRole = 'admin' | 'operation' | 'mc' | 'pd' | 'video' | 'viewer';
 
 /** Admin (master) and operation both run the schedule; only admin manages the team. */
 export const isManager = (role: AppRole | undefined) => role === 'admin' || role === 'operation';
