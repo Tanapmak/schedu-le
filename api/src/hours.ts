@@ -1,4 +1,5 @@
-import { countsHours, hoursOf, loadRules, type StaffRole } from './rules/index.js';
+import { creditResolver } from './credit.js';
+import { hoursOf, loadRules, type StaffRole } from './rules/index.js';
 import { monthRange } from './sessions.js';
 import { listPeople, sessionsBetween, type Db, type Employment, type PersonRow } from './store.js';
 
@@ -22,6 +23,8 @@ export interface HoursRow {
   doneHours: number;
   /** Cancelled sessions that still count (force majeure, team meetings). */
   cancelledCountedHours: number;
+  /** Cancelled sessions of people on urgent leave, not decided yet (end of live day, or medical certificate). Not counted. */
+  pendingHours: number;
   sessions: number;
   kpiHours: number | null;
   /** Monthly cap on scheduled hours (person override, else the rule for their position); null for operation. */
@@ -44,12 +47,20 @@ export async function hoursReport(db: Db, month: string, now = new Date()): Prom
   // Sessions are counted in the month they start in.
   const sessions = (await sessionsBetween(db, from, to)).filter((s) => s.start >= from && s.start < to);
 
-  const acc = new Map<number, { mc: number; pd: number; done: number; cancelled: number; n: number }>();
+  const credit = await creditResolver(db, sessions, now);
+
+  const acc = new Map<number, { mc: number; pd: number; done: number; cancelled: number; pending: number; n: number }>();
   for (const s of sessions) {
     for (const st of s.staff) {
-      if (!countsHours(s, st.replaced)) continue;
-      const a = acc.get(st.personId) ?? { mc: 0, pd: 0, done: 0, cancelled: 0, n: 0 };
+      const c = credit(s, st);
+      if (c.status === 'not_credited') continue;
+      const a = acc.get(st.personId) ?? { mc: 0, pd: 0, done: 0, cancelled: 0, pending: 0, n: 0 };
       const h = hoursOf(s);
+      if (c.status === 'pending') {
+        a.pending += h;
+        acc.set(st.personId, a);
+        continue;
+      }
       a[st.role] += h;
       a.n += 1;
       if (s.end <= now) a.done += h;
@@ -78,6 +89,7 @@ export async function hoursReport(db: Db, month: string, now = new Date()): Prom
       totalHours: round(mc + pd),
       doneHours: round(a?.done ?? 0),
       cancelledCountedHours: round(a?.cancelled ?? 0),
+      pendingHours: round(a?.pending ?? 0),
       sessions: a?.n ?? 0,
       kpiHours: kpi,
       maxHours: ownRole ? (p.maxHours != null ? Number(p.maxHours) : rules.maxHours[ownRole]) : null,

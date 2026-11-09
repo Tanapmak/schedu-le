@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { leaveReasonText, LeaveDocs, UrgentStats } from './LeaveExtras';
 import { api, type LeaveRequest, type Outcome, type Person, type Room, type SwapRequest, type User, isManager } from './api';
 import { t, type Lang, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay } from './time';
@@ -134,6 +135,11 @@ function RequestRow({
   }
 
   const urgent = row.type === 'leave' && row.item.kind === 'urgent';
+  // Medical certificates: only urgent sick leave needs them; the person or a manager attaches.
+  const leaveDocs =
+    row.type === 'leave' && row.item.kind === 'urgent' && (row.item.reasonCode === 'sick' || row.item.documents > 0) && row.item.status !== 'rejected' ? (
+      <LeaveDocs lang={lang} leaveId={row.item.id} count={row.item.documents} canAdd={row.item.personId === user.id || isManager(user.role)} />
+    ) : null;
   const actions = pending && (
     <div className="request-actions">
       {decide && isManager(user.role) && (
@@ -166,7 +172,11 @@ function RequestRow({
           <td data-label={t(lang, 'typeCol')}>
             <span className={urgent ? 'urgent-text' : ''}>{kindLabel}</span>
           </td>
-          <td data-label={t(lang, 'reason')} className="wrap muted">{item.reason ?? '—'}</td>
+          <td data-label={t(lang, 'reason')} className="wrap muted">
+            {row.type === 'leave' ? leaveReasonText(lang, row.item) : item.reason ?? '—'}
+            {row.type === 'leave' && row.item.kind === 'urgent' && <UrgentStats lang={lang} counts={row.item.urgentThisMonth} />}
+            {leaveDocs}
+          </td>
           <td data-label={t(lang, 'filedAt')} className="muted">{formatDay(bkkDate(new Date(item.createdAt)), lang, { day: 'numeric', month: 'short' })} {bkkTime(new Date(item.createdAt))}</td>
           <td data-label={t(lang, 'status')}>
             <StatusPill lang={lang} status={item.status} />
@@ -215,7 +225,13 @@ function RequestRow({
       </div>
       <strong className="request-who">{who}</strong>
       <span className="request-title">{what}</span>
-      {item.reason && <p className="request-reason">{item.reason}</p>}
+      {row.type === 'leave' ? (
+        (row.item.reason || row.item.reasonCode) && <p className="request-reason">{leaveReasonText(lang, row.item)}</p>
+      ) : (
+        item.reason && <p className="request-reason">{item.reason}</p>
+      )}
+      {row.type === 'leave' && row.item.kind === 'urgent' && isManager(user.role) && <UrgentStats lang={lang} counts={row.item.urgentThisMonth} />}
+      {leaveDocs}
       {pending && (
         <div className="request-actions">
           {decide && isManager(user.role) && (

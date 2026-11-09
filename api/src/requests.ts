@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { checkLeave, hasErrors, loadRules, type Leave, type Violation } from './rules/index.js';
+import { checkLeave, hasErrors, loadRules, type Leave, type LeaveReason, type Violation } from './rules/index.js';
 import { checkAgainstDb, monthRange } from './sessions.js';
 import { getSession, holidaysBetween, leavesBetween, listPeople, sessionsBetween, type Db } from './store.js';
 
@@ -40,27 +40,68 @@ export interface LeaveInput {
   end: Date;
   kind: 'normal' | 'urgent';
   reason: string | null;
+  /** Urgent leave must give one; 'other' also needs the free-text reason. */
+  reasonCode?: LeaveReason | null;
+  /**
+   * Urgent leave by session: the person's sessions they cannot work. Back-to-back sessions
+   * become one request, others one request each, so a session in between stays theirs.
+   * When given, start/end are ignored.
+   */
+  sessionIds?: number[];
+}
+
+/** The leave periods for the picked sessions: the person's own, merged when back to back. */
+async function periodsForSessions(db: Db, personId: number, ids: number[]): Promise<{ start: Date; end: Date }[] | undefined> {
+  const out: { start: Date; end: Date }[] = [];
+  const picked = [];
+  for (const id of ids) {
+    const s = await getSession(db, id);
+    if (!s || s.status !== 'published' || !s.staff.some((x) => x.personId === personId && !x.replaced)) return undefined;
+    picked.push(s);
+  }
+  picked.sort((a, b) => a.start.getTime() - b.start.getTime());
+  for (const s of picked) {
+    const last = out[out.length - 1];
+    if (last && last.end.getTime() >= s.start.getTime()) last.end = new Date(Math.max(last.end.getTime(), s.end.getTime()));
+    else out.push({ start: s.start, end: s.end });
+  }
+  return out;
 }
 
 export async function fileLeave(pool: pg.Pool, input: LeaveInput, opts: { confirm: boolean; actorId: number }): Promise<Outcome> {
-  if (input.kind === 'urgent' && !input.reason) return fail(422, 'urgent_needs_reason');
+  if (input.kind === 'urgent' && !input.reasonCode) return fail(422, 'urgent_needs_reason');
+  if (input.reasonCode === 'other' && !input.reason) return fail(422, 'other_needs_text');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     // One filing at a time, so two people cannot both take the last quota place.
     await client.query('LOCK TABLE leave_requests IN SHARE ROW EXCLUSIVE MODE');
-    const violations = await leaveViolations(client, { ...input, status: 'pending' });
+    let periods = [{ start: input.start, end: input.end }];
+    if (input.sessionIds?.length) {
+      const found = await periodsForSessions(client, input.personId, input.sessionIds);
+      if (!found) {
+        await client.query('ROLLBACK');
+        return fail(422, 'not_your_session');
+      }
+      periods = found;
+    }
+    const violations: Violation[] = [];
+    for (const p of periods) violations.push(...(await leaveViolations(client, { ...input, ...p, status: 'pending' })));
     if (hasErrors(violations) || (violations.length > 0 && !opts.confirm)) {
       await client.query('ROLLBACK');
       return { ok: false, status: hasErrors(violations) ? 422 : 409, violations };
     }
-    const { rows } = await client.query(
-      `INSERT INTO leave_requests (person_id, period, kind, reason, created_by)
-       VALUES ($1, tstzrange($2, $3), $4, $5, $6) RETURNING id::int`,
-      [input.personId, input.start, input.end, input.kind, input.reason, opts.actorId],
-    );
+    let id = 0;
+    for (const p of periods) {
+      const { rows } = await client.query(
+        `INSERT INTO leave_requests (person_id, period, kind, reason, reason_code, created_by)
+         VALUES ($1, tstzrange($2, $3), $4, $5, $6, $7) RETURNING id::int`,
+        [input.personId, p.start, p.end, input.kind, input.reason, input.kind === 'urgent' ? input.reasonCode : null, opts.actorId],
+      );
+      id ||= rows[0].id;
+    }
     await client.query('COMMIT');
-    return { ok: true, id: rows[0].id, violations };
+    return { ok: true, id, violations };
   } catch (err) {
     await client.query('ROLLBACK');
     if ((err as { constraint?: string }).constraint === 'leave_no_overlap') return fail(422, 'leave_overlap');
@@ -137,7 +178,15 @@ export async function listLeave(db: Db, opts: { personId?: number; from?: Date; 
   if (opts.status) where.push(`l.status = ${arg(opts.status)}`);
   const { rows } = await db.query(
     `SELECT l.id::int, l.person_id::int AS "personId", lower(l.period) AS start, upper(l.period) AS "end", l.kind, l.reason,
-            l.status, l.created_at AS "createdAt", l.decided_at AS "decidedAt", d.nickname AS "decidedBy"
+            l.reason_code AS "reasonCode", l.status,
+            upper(l.original_period) AS "originalEnd",
+            (SELECT count(*)::int FROM leave_documents d WHERE d.leave_id = l.id) AS documents,
+            -- Urgent leave this person took in the same Bangkok month, by reason (for whoever approves).
+            (SELECT COALESCE(json_object_agg(x.reason, x.n), '{}') FROM (
+               SELECT COALESCE(u.reason_code, 'other') AS reason, count(*)::int AS n FROM leave_requests u
+                WHERE u.person_id = l.person_id AND u.kind = 'urgent' AND u.status IN ('pending', 'approved')
+                  AND date_trunc('month', lower(u.period) AT TIME ZONE 'Asia/Bangkok') = date_trunc('month', lower(l.period) AT TIME ZONE 'Asia/Bangkok')
+                GROUP BY 1) x) AS "urgentThisMonth", l.created_at AS "createdAt", l.decided_at AS "decidedAt", d.nickname AS "decidedBy"
        FROM leave_requests l LEFT JOIN people d ON d.id = l.decided_by
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY lower(l.period) DESC LIMIT 200`,
@@ -305,4 +354,56 @@ export async function listSwaps(db: Db, opts: { personId?: number; status?: stri
     session: { ...r.session, id: Number(r.session.id), roomId: Number(r.session.roomId) },
     targetSession: r.targetSession && { ...r.targetSession, id: Number(r.targetSession.id), roomId: Number(r.targetSession.roomId) },
   }));
+}
+
+// ---------------------------------------------------------------- medical certificates
+
+export const DOC_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'];
+const MAX_DOC_BYTES = 5 * 1024 * 1024;
+
+/** Whose leave it is, so the person or a manager may touch its documents. */
+async function leaveOwner(db: Db, leaveId: number): Promise<number | undefined> {
+  const { rows } = await db.query(`SELECT person_id::int FROM leave_requests WHERE id = $1`, [leaveId]);
+  return rows[0]?.person_id;
+}
+
+export type DocOutcome = { ok: true; id: number } | { ok: false; status: 403 | 404 | 422; error: string };
+
+export async function addLeaveDocument(
+  db: Db,
+  leaveId: number,
+  doc: { fileName: string; mediaType: string; data: Buffer },
+  actor: { id: number; isAdmin: boolean },
+): Promise<DocOutcome> {
+  const owner = await leaveOwner(db, leaveId);
+  if (owner === undefined) return { ok: false, status: 404, error: 'not_found' };
+  if (owner !== actor.id && !actor.isAdmin) return { ok: false, status: 403, error: 'forbidden' };
+  if (!DOC_MEDIA_TYPES.includes(doc.mediaType)) return { ok: false, status: 422, error: 'bad_file_type' };
+  if (doc.data.length === 0 || doc.data.length > MAX_DOC_BYTES) return { ok: false, status: 422, error: 'file_too_big' };
+  const { rows } = await db.query(
+    `INSERT INTO leave_documents (leave_id, file_name, media_type, data, uploaded_by) VALUES ($1, $2, $3, $4, $5) RETURNING id::int`,
+    [leaveId, doc.fileName.slice(0, 200), doc.mediaType, doc.data, actor.id],
+  );
+  return { ok: true, id: rows[0].id };
+}
+
+export async function listLeaveDocuments(db: Db, leaveId: number, actor: { id: number; isAdmin: boolean }) {
+  const owner = await leaveOwner(db, leaveId);
+  if (owner === undefined || (owner !== actor.id && !actor.isAdmin)) return undefined;
+  const { rows } = await db.query(
+    `SELECT d.id::int, d.file_name AS "fileName", d.media_type AS "mediaType", d.uploaded_at AS "uploadedAt", p.nickname AS "uploadedBy"
+       FROM leave_documents d LEFT JOIN people p ON p.id = d.uploaded_by WHERE d.leave_id = $1 ORDER BY d.id`,
+    [leaveId],
+  );
+  return rows;
+}
+
+export async function getLeaveDocument(db: Db, docId: number, actor: { id: number; isAdmin: boolean }) {
+  const { rows } = await db.query(
+    `SELECT d.file_name, d.media_type, d.data, l.person_id::int FROM leave_documents d JOIN leave_requests l ON l.id = d.leave_id WHERE d.id = $1`,
+    [docId],
+  );
+  const r = rows[0];
+  if (!r || (r.person_id !== actor.id && !actor.isAdmin)) return undefined;
+  return { fileName: r.file_name as string, mediaType: r.media_type as string, data: r.data as Buffer };
 }

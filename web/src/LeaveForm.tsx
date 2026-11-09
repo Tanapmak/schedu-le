@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, type Holiday, type Person, type Room, type User, isManager } from './api';
+import { api, LEAVE_REASONS, type Holiday, type LeaveReason, type Person, type Room, type Session, type User, isManager } from './api';
+import { reasonKey } from './LeaveExtras';
 import { t, type Lang, type ViolationLike } from './i18n';
-import { addDays, bkkDate, bkkInstant, formatDay, todayBkk } from './time';
+import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, liveInstant, todayBkk } from './time';
 import { Checks, Modal, outcomeState } from './ui';
 
 interface Props {
@@ -23,6 +24,12 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('13:00');
   const [reason, setReason] = useState('');
+  const [reasonCode, setReasonCode] = useState<LeaveReason | ''>('');
+  // Urgent leave picks the sessions it covers; "whole day" falls back to dates.
+  const [daySessions, setDaySessions] = useState<Session[]>();
+  const [picked, setPicked] = useState<number[]>([]);
+  const [wholeDay, setWholeDay] = useState(false);
+  const bySession = kind === 'urgent' && !wholeDay;
   const [violations, setViolations] = useState<ViolationLike[]>([]);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -36,7 +43,23 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
     if (end <= start) return setOffDays([]);
     api.holidays(start, end).then(setOffDays, () => setOffDays([]));
   }, [start.getTime(), end.getTime()]);
-  const valid = end > start && (kind === 'normal' || reason.trim() !== '') && offDays.length === 0;
+  // The chosen person's published sessions on that live day (06:00 to 06:00).
+  useEffect(() => {
+    if (kind !== 'urgent') return;
+    const dayStart = liveInstant(from, '06:00');
+    setDaySessions(undefined);
+    setPicked([]);
+    api.board(dayStart, new Date(dayStart.getTime() + 86_400_000)).then(
+      (b) =>
+        setDaySessions(
+          b.sessions.filter((x) => x.status === 'published' && Date.parse(x.start) >= dayStart.getTime() && x.staff.some((st) => st.personId === personId && !st.replaced)),
+        ),
+      () => setDaySessions([]),
+    );
+  }, [kind, from, personId]);
+  const reasonOk = kind === 'normal' || (reasonCode !== '' && (reasonCode !== 'other' || reason.trim() !== ''));
+  const periodOk = bySession ? picked.length > 0 : end > start && offDays.length === 0;
+  const valid = reasonOk && periodOk;
 
   const reset = () => {
     setViolations([]);
@@ -47,7 +70,15 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
     setBusy(true);
     try {
       const out = await api.fileLeave(
-        { start: start.toISOString(), end: end.toISOString(), kind, reason: reason.trim() || undefined, personId: isAdmin ? personId : undefined },
+        {
+          start: start.toISOString(),
+          end: end.toISOString(),
+          kind,
+          reason: reason.trim() || undefined,
+          reasonCode: kind === 'urgent' && reasonCode ? reasonCode : undefined,
+          sessionIds: bySession ? picked : undefined,
+          personId: isAdmin ? personId : undefined,
+        },
         needsConfirm,
       );
       const state = outcomeState(out.violations, out.ok);
@@ -94,12 +125,44 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
             </button>
           ))}
         </div>
-        {kind === 'urgent' && <p className="hint wide">{t(lang, 'urgentHint')}</p>}
+        {kind === 'urgent' && (
+          <>
+            <p className="hint wide">{t(lang, 'urgentHint')}</p>
+            <label className="wide">
+              {t(lang, 'reason')}
+              <select value={reasonCode} onChange={(e) => (setReasonCode(e.target.value as LeaveReason), reset())}>
+                <option value="">{t(lang, 'pickReason')}…</option>
+                {LEAVE_REASONS.map((r) => (
+                  <option key={r} value={r}>
+                    {t(lang, reasonKey[r])}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="hint wide">{t(lang, 'urgentHoursHint')}</p>
+          </>
+        )}
         <label>
           {t(lang, 'fromDate')}
           <input type="date" value={from} onChange={(e) => (setFrom(e.target.value), reset())} />
         </label>
-        {allDay ? (
+        {bySession ? (
+          <div className="wide session-pick">
+            <span>{t(lang, 'pickSessions')}</span>
+            {daySessions === undefined && <p className="muted">{t(lang, 'loading')}</p>}
+            {daySessions?.length === 0 && <p className="muted">{t(lang, 'noSessionsThatDay')}</p>}
+            {daySessions?.map((x) => (
+              <label key={x.id} className="inline">
+                <input
+                  type="checkbox"
+                  checked={picked.includes(x.id)}
+                  onChange={(e) => (setPicked((p) => (e.target.checked ? [...p, x.id] : p.filter((id) => id !== x.id))), reset())}
+                />
+                {rooms.find((r) => r.id === x.roomId)?.code} {bkkTime(new Date(x.start))}–{bkkTime(new Date(x.end))}
+              </label>
+            ))}
+          </div>
+        ) : allDay ? (
           <label>
             {t(lang, 'toDate')}
             <input type="date" value={to} min={from} onChange={(e) => (setTo(e.target.value), reset())} />
@@ -116,12 +179,19 @@ export function LeaveForm({ lang, user, people, rooms, onClose, onSaved }: Props
             </label>
           </div>
         )}
-        <label className="inline wide">
-          <input type="checkbox" checked={allDay} onChange={(e) => (setAllDay(e.target.checked), reset())} />
-          {t(lang, 'allDay')}
-        </label>
+        {kind === 'urgent' ? (
+          <label className="inline wide">
+            <input type="checkbox" checked={wholeDay} onChange={(e) => (setWholeDay(e.target.checked), setAllDay(true), reset())} />
+            {t(lang, 'wholeDayInstead')}
+          </label>
+        ) : (
+          <label className="inline wide">
+            <input type="checkbox" checked={allDay} onChange={(e) => (setAllDay(e.target.checked), reset())} />
+            {t(lang, 'allDay')}
+          </label>
+        )}
         <label className="wide">
-          {t(lang, 'reason')}
+          {kind === 'urgent' ? t(lang, reasonCode === 'other' ? 'reasonDetailRequired' : 'reasonDetail') : t(lang, 'reason')}
           <input value={reason} onChange={(e) => (setReason(e.target.value), reset())} />
         </label>
       </div>

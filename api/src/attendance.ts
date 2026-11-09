@@ -185,6 +185,14 @@ export async function clockIn(pool: pg.Pool, personId: number, at: Fix | null, r
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id::int`,
     [personId, session.id, now, at?.lat ?? null, at?.lng ?? null, area.distanceM, area.inArea, area.inArea ? null : reason, status],
   );
+  // Back at work: leave that runs past this session's start ends there (the original period is kept).
+  // The skipped session then earns no hours (see rules/credit.ts, "came back").
+  await pool.query(
+    `UPDATE leave_requests
+        SET original_period = COALESCE(original_period, period), period = tstzrange(lower(period), $2)
+      WHERE person_id = $1 AND status IN ('pending', 'approved') AND lower(period) < $2 AND upper(period) > $2`,
+    [personId, new Date(session.start)],
+  );
   return { ok: true, id: rows[0].id, inArea: area.inArea, distanceM: area.distanceM, status };
 }
 

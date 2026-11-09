@@ -26,6 +26,42 @@ export interface Staff {
   personId: number;
   role: 'mc' | 'pd';
   replaced: boolean;
+  hoursCredit?: HoursCredit;
+  creditNote?: string | null;
+}
+
+export type LeaveReason = 'sick' | 'accident' | 'family' | 'errand' | 'other';
+export const LEAVE_REASONS: LeaveReason[] = ['sick', 'accident', 'family', 'errand', 'other'];
+export type CancelReason = 'leave_no_cover' | 'force_majeure' | 'meeting' | 'brand' | 'other';
+export const CANCEL_REASONS: CancelReason[] = ['leave_no_cover', 'force_majeure', 'meeting', 'brand', 'other'];
+export type HoursCredit = 'auto' | 'yes' | 'no';
+
+export type CreditCode =
+  | 'published' | 'replaced' | 'override_yes' | 'override_no' | 'cancelled_counted' | 'cancelled_not_counted'
+  | 'leave_normal' | 'leave_reason_no_hours' | 'returned' | 'pending_day' | 'pending_cert' | 'no_cert' | 'leave_ok';
+
+/** Who earns hours on a session, person by person (see the server's rules/credit.ts). */
+export interface StaffCredit {
+  personId: number;
+  role: 'mc' | 'pd';
+  replaced: boolean;
+  hoursCredit: HoursCredit;
+  creditNote: string | null;
+  credit: { status: 'credited' | 'not_credited' | 'pending'; code: CreditCode; decidesAt?: string; certDeadline?: string; sickRun?: string[] };
+}
+
+export interface CreditChoice {
+  personId: number;
+  credit: HoursCredit;
+  note?: string;
+}
+
+export interface LeaveDocument {
+  id: number;
+  fileName: string;
+  mediaType: string;
+  uploadedAt: string;
+  uploadedBy: string | null;
 }
 
 export interface Session {
@@ -37,6 +73,7 @@ export interface Session {
   location: string;
   note: string | null;
   cancelReason: string | null;
+  cancelReasonCode?: CancelReason | null;
   staff: Staff[];
 }
 
@@ -47,6 +84,7 @@ export interface Leave {
   end: string;
   status: 'pending' | 'approved';
   kind: 'normal' | 'urgent';
+  reasonCode?: LeaveReason | null;
 }
 
 export interface Holiday {
@@ -85,6 +123,12 @@ export interface LeaveRequest {
   end: string;
   kind: 'normal' | 'urgent';
   reason: string | null;
+  reasonCode: LeaveReason | null;
+  /** Set when the leave was cut short because the person clocked in again. */
+  originalEnd: string | null;
+  documents: number;
+  /** Urgent leave this person filed in the same month, by reason. */
+  urgentThisMonth: Partial<Record<LeaveReason, number>>;
   status: RequestStatus;
   createdAt: string;
   decidedBy: string | null;
@@ -120,6 +164,9 @@ export interface LeaveInput {
   end: string;
   kind: 'normal' | 'urgent';
   reason?: string;
+  reasonCode?: LeaveReason;
+  /** Urgent leave by session: start/end are then taken from these sessions. */
+  sessionIds?: number[];
   personId?: number;
 }
 
@@ -140,6 +187,7 @@ export interface HoursRow {
   totalHours: number;
   doneHours: number;
   cancelledCountedHours: number;
+  pendingHours: number;
   sessions: number;
   kpiHours: number | null;
   maxHours: number | null;
@@ -511,8 +559,15 @@ export const api = {
         confirm: opts.confirm,
       })
     ).data,
-  cancel: async (id: number, reason: string, countHours: boolean) =>
-    (await request<{ ok: boolean }>('POST', `/api/sessions/${id}/cancel`, { reason, countHours })).data,
+  cancel: async (id: number, reasonCode: CancelReason, reason: string, credits: CreditChoice[]) =>
+    (await request<{ ok: boolean; error?: string }>('POST', `/api/sessions/${id}/cancel`, { reasonCode, reason: reason || undefined, credits })).data,
+  credits: async (id: number, preview = false) =>
+    (await request<StaffCredit[]>('GET', `/api/sessions/${id}/credits${preview ? '?preview=1' : ''}`)).data,
+  saveCredits: async (id: number, credits: CreditChoice[]) =>
+    (await request<{ ok: boolean; error?: string }>('PUT', `/api/sessions/${id}/credits`, { credits })).data,
+  leaveDocuments: async (leaveId: number) => (await request<LeaveDocument[]>('GET', `/api/leave/${leaveId}/documents`)).data,
+  addLeaveDocument: async (leaveId: number, fileName: string, data: string) =>
+    (await request<{ ok: boolean; id?: number; error?: string }>('POST', `/api/leave/${leaveId}/documents`, { fileName, data })).data,
   merge: async (id: number, withId: number) =>
     (await request<{ ok: boolean }>('POST', `/api/sessions/${id}/merge`, { withId })).data,
   remove: async (id: number) => (await request<{ ok: boolean }>('DELETE', `/api/sessions/${id}`)).data,

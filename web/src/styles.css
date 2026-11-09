@@ -164,6 +164,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px s
 }
 .block-pos { position: absolute; padding: 0 2px; z-index: 1; }
 .block-pos.cancelled { z-index: 0; pointer-events: none; }
+.block-pos.cancelled.openable { pointer-events: auto; cursor: pointer; }
 .block-pos.saving { opacity: 0.6; }
 .block-pos .chip { width: 100%; height: 100%; pointer-events: none; }
 .block-pos.draggable { cursor: grab; touch-action: none; }
@@ -684,6 +685,31 @@ table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
 @media (max-width: 640px) { .range-pick { justify-content: flex-start; } .range-pick .segmented { overflow-x: auto; } }
 .day-bar span.zero { background: var(--gray-medium); }
 .table-wrap + .hint { margin-top: 8px; }
+
+/* Hours person by person on a cancelled session, urgent leave reasons, medical certificates */
+.credit-panel { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; color: var(--ink); }
+.credit-panel ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.credit-panel li { display: flex; flex-direction: column; gap: 4px; }
+.credit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.credit-who { flex: 1 1 120px; font-weight: 600; }
+.credit-row select { flex: 0 0 auto; width: auto; }
+.credit-status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--gray-light); }
+.credit-status.credited { background: #e6f4ea; color: var(--ok); }
+.credit-status.not_credited { background: var(--red-soft); color: var(--scarlet); }
+.credit-status.pending { background: #fff4e0; color: var(--warn); }
+.cancelled-credit { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.cancelled-credit > button { align-self: flex-start; }
+.session-pick { display: flex; flex-direction: column; gap: 6px; }
+.session-pick > span { font-size: 13px; }
+.urgent-stats { margin-top: 4px; }
+.urgent-stats.warn { color: var(--warn); font-weight: 600; }
+.leave-docs { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 4px; font-size: 12px; }
+.error-text { color: var(--scarlet); font-size: 12px; }
+.whats-new { display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.5; }
+.whats-new p { margin: 0; }
+.whats-new ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.whats-new li p { color: var(--muted); font-size: 13px; }
+.whats-new-examples { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 
 /* ---- Content shoots (video operation) ---- */
 .shoots-page .page-head { margin-bottom: 12px; }

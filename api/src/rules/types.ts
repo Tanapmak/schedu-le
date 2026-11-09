@@ -35,6 +35,8 @@ export interface StaffAssignment {
   personId: number;
   role: StaffRole;
   replaced?: boolean;
+  /** Cancelled sessions: 'auto' follows the leave rules (see credit.ts); 'yes'/'no' is a manager's override. */
+  hoursCredit?: 'auto' | 'yes' | 'no';
 }
 
 /** A session as stored, used both as the thing being checked and as existing bookings. */
@@ -51,6 +53,7 @@ export interface Leave extends Interval {
   personId: number;
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
   kind: 'normal' | 'urgent';
+  reasonCode?: string | null;
 }
 
 export interface Holiday extends Interval {

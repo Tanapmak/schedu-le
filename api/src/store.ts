@@ -54,12 +54,15 @@ export interface SessionRow extends Session {
   location: string;
   note: string | null;
   cancelReason: string | null;
+  cancelReasonCode: string | null;
+  staff: (StaffAssignment & { creditNote?: string | null })[];
 }
 
 const sessionSelect = `
   SELECT s.id::int, s.room_id::int, lower(s.period) AS start, upper(s.period) AS "end", s.status,
-         s.location, s.note, s.cancel_reason, s.count_hours_when_cancelled,
-         COALESCE(json_agg(json_build_object('personId', st.person_id, 'role', st.role, 'replaced', st.replaced)
+         s.location, s.note, s.cancel_reason, s.cancel_reason_code, s.count_hours_when_cancelled,
+         COALESCE(json_agg(json_build_object('personId', st.person_id, 'role', st.role, 'replaced', st.replaced,
+                                           'hoursCredit', st.hours_credit, 'creditNote', st.credit_note)
                   ORDER BY st.role, st.id) FILTER (WHERE st.id IS NOT NULL), '[]') AS staff
     FROM sessions s
     LEFT JOIN session_staff st ON st.session_id = s.id`;
@@ -73,8 +76,9 @@ const toSession = (r: any): SessionRow => ({
   location: r.location,
   note: r.note,
   cancelReason: r.cancel_reason,
+  cancelReasonCode: r.cancel_reason_code,
   countHoursWhenCancelled: r.count_hours_when_cancelled,
-  staff: r.staff.map((s: { personId: string | number; role: StaffRole; replaced: boolean }) => ({
+  staff: r.staff.map((s: { personId: string | number; role: StaffRole; replaced: boolean; hoursCredit: 'auto' | 'yes' | 'no'; creditNote: string | null }) => ({
     ...s,
     personId: Number(s.personId),
   })),
@@ -96,11 +100,11 @@ export async function getSession(db: Db, id: number): Promise<SessionRow | undef
 
 export async function leavesBetween(db: Db, from: Date, to: Date): Promise<Leave[]> {
   const { rows } = await db.query(
-    `SELECT id::int, person_id::int, lower(period) AS start, upper(period) AS "end", status, kind
+    `SELECT id::int, person_id::int, lower(period) AS start, upper(period) AS "end", status, kind, reason_code
        FROM leave_requests WHERE period && tstzrange($1, $2) AND status IN ('pending', 'approved')`,
     [from, to],
   );
-  return rows.map((r) => ({ id: r.id, personId: r.person_id, start: r.start, end: r.end, status: r.status, kind: r.kind }));
+  return rows.map((r) => ({ id: r.id, personId: r.person_id, start: r.start, end: r.end, status: r.status, kind: r.kind, reasonCode: r.reason_code }));
 }
 
 export async function holidaysBetween(db: Db, from: Date, to: Date): Promise<(Holiday & { id: number })[]> {

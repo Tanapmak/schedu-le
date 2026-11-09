@@ -51,6 +51,8 @@ async function loadMe(): Promise<Me> {
   }
 }
 
+import { WhatsNewOnce } from './WhatsNew';
+
 export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
   const [page, setPage] = useState<StringKey>('schedule');
@@ -246,6 +248,7 @@ export function App() {
         )}
         {health === 'down' && <p className="health down">{t(lang, healthKey)}</p>}
       </main>
+      {me && !authError && <WhatsNewOnce lang={lang} manager={isManager(me.user.role)} />}
     </div>
   );
 }
