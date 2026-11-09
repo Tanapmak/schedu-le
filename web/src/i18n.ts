@@ -691,6 +691,7 @@ const strings = {
   upcomingShoots: { th: 'คิวถ่าย content', en: 'Content shoots', zh: '内容拍摄' },
   noUpcomingShoots: { th: 'ยังไม่มีคิวถ่าย content ใน 4 สัปดาห์นี้', en: 'No content shoots in the next 4 weeks', zh: '未来 4 周没有内容拍摄' },
   shootBy: { th: 'ลงคิวโดย', en: 'Booked by', zh: '安排人' },
+  shootingNow: { th: 'กำลังถ่าย', en: 'Shooting now', zh: '拍摄中' },
   nextShoot: { th: 'คิวถ่ายถัดไป', en: 'Next shoot', zh: '下一个拍摄' },
 } satisfies Record<string, Record<Lang, string>>;
 

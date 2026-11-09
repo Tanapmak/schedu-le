@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type LeaveRequest, type Person, type Holiday, type Room, type Session, type Shoot, type SwapRequest, type User, isManager } from './api';
-import { t, type Lang } from './i18n';
+import { t, type Lang, type StringKey } from './i18n';
 import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
 import { SwapForm } from './SwapForm';
@@ -81,6 +81,7 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
       </div>
 
       {next && <NextLive lang={lang} session={next} meId={user.id} nameOf={nameOf} codeOf={codeOf} onSwap={() => setSwapFor(next)} swapPending={pendingSwap.has(next.id)} />}
+      {shoots && shoots.length > 0 && <NextShoot lang={lang} shoot={shoots[0]} meId={user.id} nameOf={nameOf} onOpen={() => setTab('shoots')} />}
       {children}
 
       <Tabs
@@ -176,6 +177,38 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
           onSaved={() => (setSwapFor(undefined), load())}
         />
       )}
+    </div>
+  );
+}
+
+/** When something starts, as "in 2 h 5 min" today or the weekday and date further out. */
+function startsIn(lang: Lang, start: Date, nowKey: StringKey) {
+  const mins = Math.round((start.getTime() - Date.now()) / 60_000);
+  return mins <= 0
+    ? t(lang, nowKey)
+    : mins < 24 * 60
+      ? mins < 60
+        ? t(lang, 'inMinutes').replace('{m}', String(mins))
+        : t(lang, 'inTime').replace('{h}', String(Math.floor(mins / 60))).replace('{m}', String(mins % 60))
+      : formatDay(bkkDate(start), lang, { weekday: 'long', day: 'numeric', month: 'short' });
+}
+
+/** My next content shoot, under the next live. A tap opens the shoots tab. */
+function NextShoot({ lang, shoot: s, meId, nameOf, onOpen }: { lang: Lang; shoot: Shoot; meId: number; nameOf: (id: number) => string; onOpen: () => void }) {
+  const start = new Date(s.start);
+  const partners = s.personIds.filter((id) => id !== meId).map(nameOf);
+  return (
+    <div className="next-live next-shoot" role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onOpen()}>
+      <small>
+        {t(lang, 'nextShoot')} · {startsIn(lang, start, 'shootingNow')}
+      </small>
+      <strong>
+        {bkkTime(start)}–{bkkTime(new Date(s.end))}
+      </strong>
+      <span className="shoot-title">{s.title}</span>
+      <span>
+        {[s.location, partners.length > 0 ? `${t(lang, 'with')} ${partners.join(', ')}` : ''].filter(Boolean).join(' · ')}
+      </span>
     </div>
   );
 }

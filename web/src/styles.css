@@ -704,3 +704,6 @@ fieldset.form-grid.plain { border: 0; padding: 0; margin: 12px 0 0; min-width: 0
 .person-picks .pick.on small { color: #ccc; }
 .person-picks .pick.blocked { background: var(--red); border-color: var(--red); }
 .shoot-card .day-body strong { overflow-wrap: anywhere; }
+/* Next content shoot: same card as the next live, in black so the two never get mixed up */
+.next-live.next-shoot { background: var(--ink); cursor: pointer; }
+.next-shoot .shoot-title { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
