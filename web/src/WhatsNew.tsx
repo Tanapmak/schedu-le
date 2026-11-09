@@ -49,9 +49,9 @@ const items: Item[] = [
   {
     title: { th: '"กลับมาทำงาน" คืออะไร', en: 'What "worked again" means', zh: '什么算“又上班”' },
     body: {
-      th: 'หลังเวลาเริ่มคิวที่ลา จนถึง 06:00 วันถัดไป ถ้า clock in หรือได้ไลฟ์คิวอื่น ถือว่ากลับมาทำงาน คิวที่ลาจะไม่ได้ชั่วโมง ระหว่างรอระบบจะขึ้นว่า "รอสรุป" และยังไม่นับเข้า KPI',
-      en: 'From the start of the session you skipped until 06:00 next morning, clocking in or going live in another session counts as working again: the skipped session earns nothing. Until then it shows "Pending" and is not counted in KPI.',
-      zh: '从请假场次开始到次日06:00，如打卡或参加其他场次直播，即算又上班，请假场次不计工时。在此之前显示“待定”，不计入KPI。',
+      th: 'นับตั้งแต่เวลาเริ่มคิวที่ลา จนถึง 06:00 ของวันถัดไป ถ้าคุณ clock in หรือได้ไลฟ์คิวอื่น ถือว่ากลับมาทำงานแล้ว คุณจะไม่ได้ชั่วโมงของคิวที่ลาไป (คิวที่ถูกยกเลิก) แต่คิวที่กลับมาทำยังได้ชั่วโมงตามปกติ ก่อนถึง 06:00 ชั่วโมงของคิวที่ลาจะขึ้นว่า "รอสรุป" และยังไม่นับเข้า KPI',
+      en: 'From the start of the session you took leave from until 06:00 next morning, clocking in or going live in another session counts as working again. You then get no hours for the session you left (the cancelled one), but the session you came back for still earns its hours as normal. Until 06:00 the left session shows "Pending" and is not counted in KPI.',
+      zh: '从请假场次开始到次日06:00，如打卡或参加其他场次直播，即算又上班：请假的那一场（已取消的场次）不计工时，但回来上班的场次照常计工时。06:00之前，请假场次显示“待定”，不计入KPI。',
     },
   },
   {
