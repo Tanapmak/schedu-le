@@ -676,6 +676,8 @@ table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
 .day-tip { position: absolute; top: 0; transform: translate(-50%, -100%); background: var(--ink); color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 12px; line-height: 1.4; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
 .day-tip .muted { color: #ccc; }
 .day-tip-gmv { font-size: 15px; font-weight: 700; }
+.perf-body { display: flex; flex-direction: column; gap: 20px; transition: opacity 0.15s; }
+.perf-body.is-loading { opacity: 0.55; pointer-events: none; }
 .notices { display: flex; flex-direction: column; gap: 6px; }
 .notices > p { margin: 0; }
 .range-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; justify-content: flex-end; }
