@@ -41,6 +41,7 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
   const [range, setRange] = useState(() => presetRange('thisMonth'));
   const [data, setData] = useState<LiveSummary>();
   const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'missing'>('all');
   const manager = isManager(user.role);
   const days = daysBetween(range.from, range.to);
@@ -50,15 +51,32 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
     return r.from === range.from && r.to === range.to;
   });
 
+  // Keep showing the current numbers while the new range loads (dimmed), so the page doesn't
+  // blank out and redraw. Typing in a date box waits a moment before asking the server.
   useEffect(() => {
     if (badRange) return;
     let live = true;
-    setData(undefined);
-    setFailed(false);
-    api.liveSummary(range.from, range.to).then((d) => live && setData(d), () => live && setFailed(true));
+    setLoading(true);
+    const timer = setTimeout(() => {
+      api.liveSummary(range.from, range.to).then(
+        (d) => {
+          if (!live) return;
+          setData(d);
+          setFailed(false);
+          setLoading(false);
+        },
+        () => {
+          if (!live) return;
+          setFailed(true);
+          setLoading(false);
+        },
+      );
+    }, data ? 250 : 0);
     return () => {
       live = false;
+      clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range.from, range.to, badRange]);
 
   const tot = data?.totals;
@@ -69,7 +87,7 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
   const pending = (data?.byPerson ?? []).reduce((a, p) => a + p.pendingDeduction, 0);
 
   return (
-    <div className="page fill">
+    <div className="page">
       <div className="page-head">
         <div>
           <h1>{t(lang, 'livePerf')}</h1>
@@ -100,7 +118,7 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
       {!data && !failed && !badRange && <p className="muted">{t(lang, 'loading')}</p>}
 
       {data && tot && !badRange && (
-        <>
+        <div className={`perf-body ${loading ? 'is-loading' : ''}`} aria-busy={loading}>
           <div className="notices">
           {data.months.map((m) => (
             <p key={m.month} className={m.closed ? 'hint' : 'notice-bar'}>
@@ -219,7 +237,7 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
             </section>
           )}
 
-          <section className="grow">
+          <section>
             <div className="section-head">
               <h2>{t(lang, 'sessionList')}</h2>
               <div className="segmented" role="group">
@@ -268,7 +286,7 @@ export function LivePerformancePage({ lang, user }: { lang: Lang; user: User }) 
               </div>
             )}
           </section>
-        </>
+        </div>
       )}
     </div>
   );
