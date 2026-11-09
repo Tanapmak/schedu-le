@@ -668,6 +668,17 @@ table.data .neg, .stat-value.neg, .neg { color: var(--scarlet); }
 .day-bar { flex: 1 0 14px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; }
 .day-bar span { display: block; width: 100%; min-height: 2px; background: var(--red); border-radius: 3px 3px 0 0; }
 .day-bar small { position: absolute; bottom: -18px; font-size: 10px; color: var(--muted); }
-.day-bar:hover span { background: var(--ink); }
+.day-bar { cursor: pointer; }
+.day-bar:hover span, .day-bar.on span { background: var(--ink); }
+.day-chart { position: relative; }
+.day-max { position: absolute; top: -2px; right: 0; }
+.day-chart .day-bars { padding-top: 16px; }
+.day-tip { position: absolute; top: 0; transform: translate(-50%, -100%); background: var(--ink); color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 12px; line-height: 1.4; white-space: nowrap; pointer-events: none; z-index: 5; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.day-tip .muted { color: #ccc; }
+.day-tip-gmv { font-size: 15px; font-weight: 700; }
+.notices { display: flex; flex-direction: column; gap: 6px; }
+.notices > p { margin: 0; }
+.range-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; justify-content: flex-end; }
+@media (max-width: 640px) { .range-pick { justify-content: flex-start; } .range-pick .segmented { overflow-x: auto; } }
 .day-bar span.zero { background: var(--gray-medium); }
 .table-wrap + .hint { margin-top: 8px; }

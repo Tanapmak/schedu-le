@@ -15,7 +15,7 @@ import { copyRows, importRows, importTemplate, readSheet, saveDrafts } from './b
 import { payrollWorkbook } from './export.js';
 import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, editResult, flagInfo, getResult, listResults, parseResultInput, resultImage, resultPolicy, saveResult } from './results.js';
-import { monthSummary } from './liveSummary.js';
+import { monthSummary, rangeSummary } from './liveSummary.js';
 import { claudeReader, normalizeBoxes, type ImageMediaType, type ScreenshotReader } from './vision.js';
 import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
@@ -29,6 +29,8 @@ const decisionOf = (v: unknown) => {
 const send = (res: Response, out: Outcome, created = false) => res.status(out.ok ? (created ? 201 : 200) : out.status).json(out);
 
 const MAX_RANGE_DAYS = 62;
+/** Longest range the live performance page can show at once. */
+const MAX_SUMMARY_DAYS = 366;
 
 export interface AppOptions {
   /** Reads live-dashboard screenshots. Undefined when no AI key is set: results are typed in by hand. */
@@ -373,8 +375,20 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.status(201).json({ ok: true, id });
   });
 
-  // Live performance for a month: totals, by room, by person, every session's result status.
+  // Live performance for a month (?month=YYYY-MM) or a date range (?from=YYYY-MM-DD&to=YYYY-MM-DD,
+  // both days included, Bangkok time): totals, by room, by person, every session's result status.
   app.get('/api/results/summary', async (req, res) => {
+    if (req.query.from !== undefined || req.query.to !== undefined) {
+      const day = (v: unknown, field: string) => {
+        if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(`${v}T00:00:00+07:00`)))
+          throw new BadRequest(`${field} must be YYYY-MM-DD`);
+        return new Date(`${v}T00:00:00+07:00`);
+      };
+      const from = day(req.query.from, 'from');
+      const to = new Date(day(req.query.to, 'to').getTime() + 86_400_000);
+      if (to <= from || to.getTime() - from.getTime() > MAX_SUMMARY_DAYS * 86_400_000) throw new BadRequest('bad range');
+      return void res.json(await rangeSummary(pool, from, to, clock(), req.user!));
+    }
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
     res.json(await monthSummary(pool, req.query.month, clock(), req.user!));
   });
