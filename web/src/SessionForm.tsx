@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, type Person, type Room, type Session, type SessionInput } from './api';
+import { api, CANCEL_REASONS, type CancelReason, type CreditChoice, type Person, type Room, type Session, type SessionInput } from './api';
+import { cancelKey, CreditPanel } from './LeaveExtras';
 import { t, violationMessage, type Lang, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay, liveDate, liveInstant } from './time';
 import { useBackdropClose } from './ui';
@@ -31,8 +32,13 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
   const [violations, setViolations] = useState<ViolationLike[]>([]);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cancelCode, setCancelCode] = useState<CancelReason | ''>('');
   const [cancelReason, setCancelReason] = useState('');
-  const [countHours, setCountHours] = useState(true);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [credits, setCredits] = useState<{ choices: CreditChoice[]; valid: boolean }>({ choices: [], valid: true });
+  const [creditError, setCreditError] = useState('');
+  const onCredits = (choices: CreditChoice[], valid: boolean) => setCredits({ choices, valid });
+  const canCancel = cancelCode !== '' && (cancelCode !== 'other' || cancelReason.trim() !== '') && credits.valid;
 
   const room = rooms.find((r) => r.id === roomId);
   const needsPd = room ? room.roomType === 'live' && room.requiresPd : true;
@@ -86,10 +92,13 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
     }
   }
 
-  async function act(fn: () => Promise<{ ok: boolean }>) {
+  async function act(fn: () => Promise<{ ok: boolean; error?: string }>) {
     setBusy(true);
+    setCreditError('');
     try {
-      if ((await fn()).ok) onSaved();
+      const out = await fn();
+      if (out.ok) onSaved();
+      else if (out.error) setCreditError(out.error);
     } finally {
       setBusy(false);
     }
@@ -183,8 +192,23 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
           ))}
         </ul>
 
+        {editing && editing.status === 'cancelled' && (
+          <div className="cancelled-credit">
+            <p className="hint">
+              {t(lang, 'cancelReasonPick')}:{' '}
+              {[editing.cancelReasonCode ? t(lang, cancelKey[editing.cancelReasonCode]) : '', editing.cancelReason !== editing.cancelReasonCode ? editing.cancelReason : '']
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+            <CreditPanel lang={lang} sessionId={editing.id} people={people} preview={false} onChange={onCredits} />
+            <button disabled={busy || !credits.valid} onClick={() => act(() => api.saveCredits(editing.id, credits.choices))}>
+              {t(lang, 'saveCredits')}
+            </button>
+          </div>
+        )}
+
         {editing && editing.status !== 'cancelled' && (
-          <details className="danger-zone">
+          <details className="danger-zone" onToggle={(e) => setCancelOpen((e.target as HTMLDetailsElement).open)}>
             <summary>{t(lang, editing.status === 'draft' ? 'deleteDraft' : 'cancelSession')}</summary>
             {editing.status === 'draft' ? (
               <button className="danger" disabled={busy} onClick={() => act(() => api.remove(editing.id))}>
@@ -192,19 +216,24 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
               </button>
             ) : (
               <div className="cancel-form">
+                <select value={cancelCode} onChange={(e) => setCancelCode(e.target.value as CancelReason)}>
+                  <option value="">{t(lang, 'cancelReasonPick')}…</option>
+                  {CANCEL_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {t(lang, cancelKey[r])}
+                    </option>
+                  ))}
+                </select>
                 <input
-                  placeholder={t(lang, 'cancelReason')}
+                  placeholder={t(lang, cancelCode === 'other' ? 'reasonDetailRequired' : 'reasonDetail')}
                   value={cancelReason}
                   onChange={(e) => setCancelReason(e.target.value)}
                 />
-                <label className="inline">
-                  <input type="checkbox" checked={countHours} onChange={(e) => setCountHours(e.target.checked)} />
-                  {t(lang, 'countHours')}
-                </label>
+                {cancelOpen && <CreditPanel lang={lang} sessionId={editing.id} people={people} preview onChange={onCredits} />}
                 <button
                   className="danger"
-                  disabled={busy || !cancelReason.trim()}
-                  onClick={() => act(() => api.cancel(editing.id, cancelReason.trim(), countHours))}
+                  disabled={busy || !canCancel}
+                  onClick={() => act(() => api.cancel(editing.id, cancelCode as CancelReason, cancelReason.trim(), credits.choices))}
                 >
                   {t(lang, 'cancelSession')}
                 </button>
@@ -212,6 +241,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
             )}
           </details>
         )}
+        {creditError && <p className="error-text">{t(lang, creditError === 'other_needs_text' ? 'otherNeedsText' : 'creditNote')}</p>}
 
         <footer>
           <button onClick={onClose}>{t(lang, 'close')}</button>

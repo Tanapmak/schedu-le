@@ -86,6 +86,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
                   <th className="num">{t(lang, 'crossRole')}</th>
                   <th className="num">{t(lang, 'total')}</th>
                   <th className="num">{t(lang, 'done')}</th>
+                  <th className="num">{t(lang, 'pendingHours')}</th>
                   <th className="num">{t(lang, 'sessionsCount')}</th>
                 </tr>
               </thead>
@@ -103,6 +104,7 @@ export function HoursPage({ lang, user, exportButton }: { lang: Lang; user: User
                     <td className="num">{r.crossRoleHours ? fmt(r.crossRoleHours) : '–'}</td>
                     <td className="num">{fmt(r.totalHours)}</td>
                     <td className="num">{fmt(r.doneHours)}</td>
+                    <td className="num muted">{r.pendingHours ? fmt(r.pendingHours) : '–'}</td>
                     <td className="num">{r.sessions}</td>
                   </tr>
                 ))}

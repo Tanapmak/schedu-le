@@ -1,3 +1,4 @@
+import { countsHours } from './credit.js';
 import { bangkokDates, bangkokMonth, hoursOf, overlaps } from './time.js';
 import type { Holiday, Leave, Person, Room, Rules, Session, StaffRole, Violation } from './types.js';
 
@@ -11,12 +12,6 @@ const allowedRoles: Record<Person['position'], StaffRole[]> = {
   operation: ['mc', 'pd'],
 };
 
-/** Hours a staff row earns: published sessions, plus cancelled ones still marked to count. Replaced people earn none. */
-export function countsHours(session: Session, replaced = false): boolean {
-  if (replaced) return false;
-  if (session.status === 'published') return true;
-  return session.status === 'cancelled' && session.countHoursWhenCancelled !== false;
-}
 
 /** Hours each person earns in a Bangkok month (YYYY-MM), split by the role they worked. */
 export function hoursByPerson(sessions: Session[], month: string): Map<number, Record<StaffRole, number>> {
@@ -24,7 +19,7 @@ export function hoursByPerson(sessions: Session[], month: string): Map<number, R
   for (const s of sessions) {
     if (bangkokMonth(s.start) !== month) continue;
     for (const st of s.staff) {
-      if (!countsHours(s, st.replaced)) continue;
+      if (!countsHours(s, st)) continue;
       const t = totals.get(st.personId) ?? { mc: 0, pd: 0 };
       t[st.role] += hoursOf(s);
       totals.set(st.personId, t);

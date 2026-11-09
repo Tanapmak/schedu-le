@@ -3,6 +3,7 @@ import { api, type Board, type LeaveRequest, type Person, type Room, type Sessio
 import { t, type Lang, type ViolationLike } from './i18n';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay } from './time';
 import { Checks, Modal, periodLabel } from './ui';
+import { leaveReasonText, UrgentStats } from './LeaveExtras';
 
 type Staff = Session['staff'];
 export type PreviewItem = { type: 'leave'; item: LeaveRequest } | { type: 'swap'; item: SwapRequest };
@@ -108,7 +109,14 @@ export function RequestPreview({
 
   return (
     <Modal title={title} onClose={onClose} footer={actions} wide>
-      {row.item.reason && <p className="request-reason">“{row.item.reason}”</p>}
+      {row.type === 'leave' ? (
+        <>
+          {(row.item.reason || row.item.reasonCode) && <p className="request-reason">“{leaveReasonText(lang, row.item)}”</p>}
+          {row.item.kind === 'urgent' && <UrgentStats lang={lang} counts={row.item.urgentThisMonth} />}
+        </>
+      ) : (
+        row.item.reason && <p className="request-reason">“{row.item.reason}”</p>
+      )}
       {decided && <p className="hint">{t(lang, 'previewDecided')}</p>}
       {tooLong && <p className="muted">{periodLabel(lang, spans[0].start, spans[0].end)}</p>}
       {!board && !tooLong && <p className="muted">{t(lang, 'loading')}</p>}

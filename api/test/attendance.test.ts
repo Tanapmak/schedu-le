@@ -101,6 +101,19 @@ describe.skipIf(!url)('clock in / clock out', () => {
     expect((await call('POST', '/api/attendance/clock-out', IN)).body.error).toBe('not_clocked_in');
   });
 
+  it('cuts leave short when the person clocks in for a later session', async () => {
+    const id = await sessionIn(20);
+    const start = (await pool.query(`SELECT lower(period) AS s FROM sessions WHERE id = $1`, [id])).rows[0].s as Date;
+    // Whole-day urgent leave filed by mistake, starting earlier today.
+    await pool.query(
+      `INSERT INTO leave_requests (person_id, period, kind, reason_code, status) VALUES (1, tstzrange($1, $2), 'urgent', 'sick', 'approved')`,
+      [new Date(start.getTime() - 5 * 3_600_000), new Date(start.getTime() + 10 * 3_600_000)],
+    );
+    expect((await call('POST', '/api/attendance/clock-in', IN)).status).toBe(201);
+    const { rows } = await pool.query(`SELECT upper(period) AS e, original_period IS NOT NULL AS kept FROM leave_requests`);
+    expect(rows[0]).toEqual({ e: start, kept: true });
+  });
+
   it('refuses before the window opens and says when it opens', async () => {
     await sessionIn(90);
     const res = await call('POST', '/api/attendance/clock-in', IN);

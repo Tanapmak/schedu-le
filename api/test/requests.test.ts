@@ -94,7 +94,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
 
     const urgentNoReason = await call('POST', '/api/leave', { ...fullDay('2030-01-10'), kind: 'urgent' }, MC_C);
     expect(urgentNoReason.body.violations[0].code).toBe('urgent_needs_reason');
-    const urgent = { ...fullDay('2030-01-10'), kind: 'urgent', reason: 'ป่วย' };
+    const urgent = { ...fullDay('2030-01-10'), kind: 'urgent', reasonCode: 'sick' };
     expect((await call('POST', '/api/leave', urgent, MC_C)).status).toBe(409); // warning: over quota
     expect((await call('POST', '/api/leave', { ...urgent, confirm: true }, MC_C)).status).toBe(201);
 
@@ -108,7 +108,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
   it('approves every request on a day where an urgent one went over the quota', async () => {
     const a = (await call('POST', '/api/leave', fullDay('2030-01-20'), MC_A)).body.id;
     const b = (await call('POST', '/api/leave', fullDay('2030-01-20'), MC_B)).body.id;
-    const urgent = { ...fullDay('2030-01-20'), kind: 'urgent', reason: 'ไม่สบาย', confirm: true };
+    const urgent = { ...fullDay('2030-01-20'), kind: 'urgent', reasonCode: 'sick', confirm: true };
     const c = (await call('POST', '/api/leave', urgent, MC_C)).body.id;
 
     // The two normal requests were within the quota when filed, so they approve cleanly.
@@ -128,7 +128,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     await call('POST', '/api/holidays', { name: 'ออฟตาราง', ...fullDay('2030-01-25') });
     const res = await call('POST', '/api/leave', fullDay('2030-01-25'), MC_A);
     expect(res).toMatchObject({ status: 422, body: { violations: [{ code: 'holiday_no_leave', detail: { date: '2030-01-25' } }] } });
-    const urgent = await call('POST', '/api/leave', { ...fullDay('2030-01-25'), kind: 'urgent', reason: 'x', confirm: true }, MC_A);
+    const urgent = await call('POST', '/api/leave', { ...fullDay('2030-01-25'), kind: 'urgent', reasonCode: 'errand', confirm: true }, MC_A);
     expect(urgent.body.violations[0].code).toBe('holiday_no_leave');
     expect((await call('POST', '/api/leave', fullDay('2030-01-26'), MC_A)).status).toBe(201);
   });
@@ -143,7 +143,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const ninth = await call('POST', '/api/leave', days(20, 1), MC_A);
     expect(ninth).toMatchObject({ status: 422, body: { violations: [{ code: 'leave_month_cap', detail: { month: '2030-05', used: 8, max: 8 } }] } });
     // Urgent leave is not counted, and the next month starts fresh.
-    expect((await call('POST', '/api/leave', { ...days(21, 1), kind: 'urgent', reason: 'ป่วย' }, MC_A)).status).toBe(201);
+    expect((await call('POST', '/api/leave', { ...days(21, 1), kind: 'urgent', reasonCode: 'sick' }, MC_A)).status).toBe(201);
     expect((await call('POST', '/api/leave', fullDay('2030-06-02'), MC_A)).status).toBe(201);
     // Guests have no cap.
     await pool.query(`UPDATE people SET employment = 'guest' WHERE id = 1`);
@@ -235,6 +235,65 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const own = await call('GET', '/api/hours?month=2030-02', undefined, MC_A);
     expect(own.body.rows).toHaveLength(1);
     expect((await call('GET', '/api/hours?month=2030-13')).status).toBe(400);
+  });
+
+  it('files urgent leave by session and credits hours person by person when the session is cancelled', async () => {
+    // MC A has three lives on 2020-03-10; the 15:00 one is on leave and gets cancelled.
+    const morning = await published('TTS 1', '2020-03-10T10:00', '2020-03-10T12:00', 1, 3);
+    const afternoon = await published('TTS 1', '2020-03-10T15:00', '2020-03-10T17:00', 1, 3);
+    const evening = await published('TTS 2', '2020-03-10T20:00', '2020-03-10T22:00', 1, 4);
+    expect(morning).toBeGreaterThan(0);
+
+    const noCode = await call('POST', '/api/leave', { kind: 'urgent', sessionIds: [afternoon], reason: 'ป่วย' }, MC_A);
+    expect(noCode.body.violations[0].code).toBe('urgent_needs_reason');
+    expect((await call('POST', '/api/leave', { kind: 'urgent', reasonCode: 'sick', sessionIds: [evening + 99] }, MC_A)).status).toBe(422);
+    const filed = await call('POST', '/api/leave', { kind: 'urgent', reasonCode: 'sick', sessionIds: [afternoon], confirm: true }, MC_A);
+    expect(filed.status).toBe(201);
+    await call('POST', `/api/leave/${filed.body.id}/decision`, { decision: 'approve', confirm: true });
+    const [mine] = (await call('GET', '/api/leave?mine=1', undefined, MC_A)).body;
+    expect(mine).toMatchObject({ reasonCode: 'sick', urgentThisMonth: { sick: 1 }, documents: 0 });
+    expect(new Date(mine.start)).toEqual(new Date('2020-03-10T15:00:00+07:00'));
+    expect(new Date(mine.end)).toEqual(new Date('2020-03-10T17:00:00+07:00'));
+
+    // The cancel dialog previews: PD A earns the hours, MC A waits for the leave rule.
+    const preview = (await call('GET', `/api/sessions/${afternoon}/credits?preview=1`)).body;
+    expect(preview.map((r: { personId: number; credit: { code: string } }) => [r.personId, r.credit.code])).toEqual([
+      [1, 'returned'], // MC A still works the 20:00 live, so the "sick" 15:00 leave earns nothing
+      [3, 'cancelled_counted'],
+    ]);
+    expect((await call('POST', `/api/sessions/${afternoon}/cancel`, { reasonCode: 'other' })).status).toBe(422);
+    const overrideNoNote = { reasonCode: 'leave_no_cover', credits: [{ personId: 3, credit: 'no' }] };
+    expect((await call('POST', `/api/sessions/${afternoon}/cancel`, overrideNoNote)).body.error).toBe('override_needs_note');
+    expect((await call('POST', `/api/sessions/${afternoon}/cancel`, { reasonCode: 'leave_no_cover' })).status).toBe(200);
+
+    let hours = (await call('GET', '/api/hours?month=2020-03')).body.rows;
+    const row = (name: string) => hours.find((r: { nickname: string }) => r.nickname === name);
+    expect(row('MC A')).toMatchObject({ mcHours: 4, cancelledCountedHours: 0 }); // 10-12 and 20-22 only
+    expect(row('PD A')).toMatchObject({ pdHours: 4, cancelledCountedHours: 2 }); // 10-12 and the cancelled 15-17
+
+    // Someone else covers the evening: MC A did not come back, so the sick leave earns the hours.
+    await pool.query(`UPDATE session_staff SET replaced = true WHERE session_id = $1 AND person_id = 1`, [evening]);
+    hours = (await call('GET', '/api/hours?month=2020-03')).body.rows;
+    expect(row('MC A')).toMatchObject({ mcHours: 4, cancelledCountedHours: 2 });
+
+    // Operation overrides with a note; it is logged.
+    expect((await call('PUT', `/api/sessions/${afternoon}/credits`, { credits: [{ personId: 1, credit: 'no' }] })).status).toBe(422);
+    const put = await call('PUT', `/api/sessions/${afternoon}/credits`, { credits: [{ personId: 1, credit: 'no', note: 'เห็นไลฟ์ส่วนตัว' }] });
+    expect(put.status).toBe(200);
+    hours = (await call('GET', '/api/hours?month=2020-03')).body.rows;
+    expect(row('MC A')).toMatchObject({ mcHours: 2, cancelledCountedHours: 0 });
+    const { rows: log } = await pool.query(`SELECT after FROM audit_log WHERE action = 'hours_credit'`);
+    expect(log[0].after).toMatchObject({ personId: 1, credit: 'no', note: 'เห็นไลฟ์ส่วนตัว' });
+
+    // Medical certificates: the person or a manager, never someone else.
+    const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 cert').toString('base64')}`;
+    expect((await call('POST', `/api/leave/${filed.body.id}/documents`, { data: pdf, fileName: 'cert.pdf' }, MC_B)).status).toBe(403);
+    const up = await call('POST', `/api/leave/${filed.body.id}/documents`, { data: pdf, fileName: 'cert.pdf' }, MC_A);
+    expect(up.status).toBe(201);
+    const docs = (await call('GET', `/api/leave/${filed.body.id}/documents`)).body;
+    expect(docs).toMatchObject([{ fileName: 'cert.pdf', mediaType: 'application/pdf', uploadedBy: 'MC A' }]);
+    const file = await fetch(`${base}/api/leave-documents/${up.body.id}`, { headers: { 'x-dev-user': MC_A } });
+    expect(await file.text()).toBe('%PDF-1.4 cert');
   });
 
   it('reads a screenshot into a draft, then saves readings with per-broadcast deltas', async () => {
@@ -362,10 +421,10 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await (await fetch(`${base}/api/export/payroll?month=2020-05`)).arrayBuffer()) as unknown as ExcelJS.Buffer);
     const pdA = wb.getWorksheet('Summary')!.getRows(2, 5)!.find((r) => r.getCell(1).value === 'PD A')!;
-    expect([pdA.getCell('N').value, pdA.getCell('O').value]).toEqual([2, 1000]);
+    expect([pdA.getCell('O').value, pdA.getCell('P').value]).toEqual([2, 1000]);
     expect(wb.getWorksheet('Missing results')!.rowCount).toBe(3);
     // Sessions sheet: the result status on every line, the 500 only on the PD's line.
-    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('F').value, r.getCell('O').value, r.getCell('P').value ?? null, r.getCell('Q').value ?? null]);
+    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('F').value, r.getCell('P').value, r.getCell('Q').value ?? null, r.getCell('R').value ?? null]);
     expect(lines).toEqual(expect.arrayContaining([['PD A', 'missing', 500, 'Charged'], ['MC A', 'missing', null, null], ['PD A', 'late', 500, 'Charged']]));
   });
 
@@ -380,7 +439,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect(res.headers.get('content-type')).toContain('spreadsheetml');
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ExcelJS.Buffer);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance', 'Missing results']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance', 'Missing results', 'Cancelled & leave', 'Urgent leave']);
 
     const names = (sheet: string, col: string) =>
       wb.getWorksheet(sheet)!.getColumn(col).values.slice(2).filter((v) => typeof v === 'string');
@@ -391,6 +450,6 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect(fl.getRow(2).getCell('F').value).toBe('FL-Kaew');
     expect(fl.getRow(4).values).toEqual(expect.arrayContaining(['Total FL-Kaew', 5, '2 lives', 9000]));
     const mcA = wb.getWorksheet('Summary')!.getRows(2, 5)!.find((r) => r.getCell(1).value === 'MC A')!;
-    expect(mcA.getCell('L').value).toBe(9000);
+    expect(mcA.getCell('M').value).toBe(9000);
   });
 });

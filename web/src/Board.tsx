@@ -288,6 +288,7 @@ export function Board({ lang, rooms, people, user, mode = 'schedule', onSessionO
                 nameOf={nameOf}
                 extras={cardExtras}
                 onOpen={onSessionOpen}
+                onOpenCancelled={canEdit ? (s) => setForm({ mode: 'edit', session: s }) : undefined}
                 onDragStart={startDrag}
                 onEmpty={(hour) =>
                   canEdit &&
@@ -583,6 +584,8 @@ interface RowProps {
   extras: (s: Session) => { hit?: LeaveHit; badge?: string };
   onOpen?: (s: Session) => void;
   onDragStart: (e: ReactPointerEvent<HTMLElement>, s: Session, mode: DragMode) => void;
+  /** Managers open a cancelled session to change who earns its hours. */
+  onOpenCancelled?: (s: Session) => void;
   onEmpty: (hour: number) => void;
 }
 
@@ -608,7 +611,7 @@ function stackRows(sessions: Session[], draggingId?: number): { rowOf: Map<numbe
   return { rowOf, rows: Math.max(taken.length, 1) };
 }
 
-function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdit, nameOf, extras, onOpen, onDragStart, onEmpty }: RowProps) {
+function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdit, nameOf, extras, onOpen, onOpenCancelled, onDragStart, onEmpty }: RowProps) {
   const { rowOf, rows } = stackRows(sessions, draggingId);
   return (
     <>
@@ -633,7 +636,7 @@ function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdi
           return (
             <div
               key={s.id}
-              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.id === savingId ? ' saving' : ''}${s.status === 'cancelled' ? ' cancelled' : canEdit ? ' draggable' : onOpen ? ' openable' : ''}`}
+              className={`block-pos${s.id === draggingId ? ' dragging' : ''}${s.id === savingId ? ' saving' : ''}${s.status === 'cancelled' ? ` cancelled${onOpenCancelled ? ' openable' : ''}` : canEdit ? ' draggable' : onOpen ? ' openable' : ''}`}
               style={{
                 left: `${(startMin / SPAN_MIN) * 100}%`,
                 width: `${((endMin - startMin) / SPAN_MIN) * 100}%`,
@@ -643,7 +646,8 @@ function DayRow({ lang, room, date, sessions, draggingId, savingId, meId, canEdi
               onPointerDown={(e) => onDragStart(e, s, 'move')}
               onClick={(e) => {
                 e.stopPropagation();
-                if (!canEdit && onOpen && s.status !== 'cancelled') onOpen(s);
+                if (s.status === 'cancelled') onOpenCancelled?.(s);
+                else if (!canEdit && onOpen) onOpen(s);
               }}
             >
               <SessionChip lang={lang} session={s} room={room} meId={meId} nameOf={nameOf} {...extras(s)} />

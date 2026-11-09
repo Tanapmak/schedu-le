@@ -17,7 +17,12 @@ import { hoursReport, isMonth } from './hours.js';
 import { canRecord, deleteResult, editResult, flagInfo, getResult, listResults, parseResultInput, resultImage, resultPolicy, saveResult } from './results.js';
 import { monthSummary } from './liveSummary.js';
 import { claudeReader, normalizeBoxes, type ImageMediaType, type ScreenshotReader } from './vision.js';
-import { decideLeave, decideSwap, fileLeave, fileSwap, listLeave, listSwaps, withdrawLeave, withdrawSwap, type Outcome } from './requests.js';
+import {
+  addLeaveDocument, decideLeave, decideSwap, fileLeave, fileSwap, getLeaveDocument, listLeave, listLeaveDocuments, listSwaps,
+  withdrawLeave, withdrawSwap, type Outcome,
+} from './requests.js';
+import { cancelSession, sessionCredits, updateCredits, type CreditChoice } from './credit.js';
+import { CANCEL_REASONS, LEAVE_REASONS, type CancelReason, type LeaveReason } from './rules/index.js';
 import { checkAgainstDb, mergeSessions, saveSession } from './sessions.js';
 import { holidaysBetween, leavesBetween, listPeople, listRooms, sessionsBetween } from './store.js';
 
@@ -29,6 +34,15 @@ const decisionOf = (v: unknown) => {
 const send = (res: Response, out: Outcome, created = false) => res.status(out.ok ? (created ? 201 : 200) : out.status).json(out);
 
 const MAX_RANGE_DAYS = 62;
+
+const creditChoices = (v: unknown): CreditChoice[] => {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new BadRequest('credits must be a list');
+  return v.map((c, i) => {
+    if (!['auto', 'yes', 'no'].includes(c?.credit)) throw new BadRequest(`credits[${i}].credit must be auto, yes or no`);
+    return { personId: parseId(c.personId, `credits[${i}].personId`), credit: c.credit, note: text(c.note) };
+  });
+};
 
 export interface AppOptions {
   /** Reads live-dashboard screenshots. Undefined when no AI key is set: results are typed in by hand. */
@@ -137,17 +151,27 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     res.status(result.ok ? 200 : result.status).json(result);
   });
 
+  // Cancelling picks a reason and, person by person, who earns the hours ('auto' follows the leave rules).
   app.post('/api/sessions/:id/cancel', requireManager, async (req, res) => {
     const id = parseId(req.params.id, 'id');
-    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
-    if (!reason) throw new BadRequest('reason is required');
-    const countHours = req.body.countHours !== false;
-    const { rowCount } = await pool.query(
-      `UPDATE sessions SET status = 'cancelled', cancel_reason = $2, count_hours_when_cancelled = $3
-        WHERE id = $1 AND status <> 'cancelled'`,
-      [id, reason, countHours],
-    );
-    res.status(rowCount ? 200 : 404).json({ ok: Boolean(rowCount) });
+    if (req.body.reasonCode === undefined && !text(req.body.reason)) throw new BadRequest('reasonCode or reason is required');
+    const reasonCode = req.body.reasonCode ?? 'other';
+    if (!CANCEL_REASONS.includes(reasonCode)) throw new BadRequest(`reasonCode must be one of ${CANCEL_REASONS.join(', ')}`);
+    const reason = text(req.body.reason);
+    const out = await cancelSession(pool, id, { reasonCode: reasonCode as CancelReason, reason, credits: creditChoices(req.body.credits) }, req.user!.id);
+    res.status(out.ok ? 200 : out.status).json(out);
+  });
+
+  // Who earns hours on a session; for a published one, what cancelling it now would give.
+  app.get('/api/sessions/:id/credits', requireManager, async (req, res) => {
+    const rows = await sessionCredits(pool, parseId(req.params.id, 'id'), clock(), req.query.preview === '1');
+    if (!rows) return void res.status(404).json({ error: 'not_found' });
+    res.json(rows);
+  });
+
+  app.put('/api/sessions/:id/credits', requireManager, async (req, res) => {
+    const out = await updateCredits(pool, parseId(req.params.id, 'id'), creditChoices(req.body.credits), req.user!.id);
+    res.status(out.ok ? 200 : out.status).json(out);
   });
 
   // Joins a back-to-back session (same room, people, status) into this one.
@@ -306,7 +330,7 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   // ---- Hours vs KPI for a month. The team sees only their own row.
   app.get('/api/hours', async (req, res) => {
     if (!isMonth(req.query.month)) throw new BadRequest('month must be YYYY-MM');
-    const rows = await hoursReport(pool, req.query.month);
+    const rows = await hoursReport(pool, req.query.month, clock());
     res.json({ month: req.query.month, rows: isManager(req.user!.role) ? rows : rows.filter((r) => r.personId === req.user!.id) });
   });
 
@@ -436,7 +460,18 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
     const isAdmin = isManager(req.user!.role);
     const personId = isAdmin && req.body.personId !== undefined ? parseId(req.body.personId, 'personId') : req.user!.id;
     const kind = req.body.kind === 'urgent' ? 'urgent' : 'normal';
-    const input = { personId, start: parseDate(req.body.start, 'start'), end: parseDate(req.body.end, 'end'), kind, reason: text(req.body.reason) } as const;
+    const reasonCode = req.body.reasonCode ?? null;
+    if (reasonCode !== null && !LEAVE_REASONS.includes(reasonCode)) throw new BadRequest(`reasonCode must be one of ${LEAVE_REASONS.join(', ')}`);
+    const sessionIds = Array.isArray(req.body.sessionIds) ? req.body.sessionIds.map((v: unknown, i: number) => parseId(v, `sessionIds[${i}]`)) : undefined;
+    const input = {
+      personId,
+      start: sessionIds?.length ? new Date(0) : parseDate(req.body.start, 'start'),
+      end: sessionIds?.length ? new Date(0) : parseDate(req.body.end, 'end'),
+      kind,
+      reason: text(req.body.reason),
+      reasonCode: reasonCode as LeaveReason | null,
+      sessionIds,
+    } as const;
     send(res, await fileLeave(pool, input, { confirm: req.body.confirm === true, actorId: req.user!.id }), true);
   });
 
@@ -451,6 +486,34 @@ export function createApp(pool: pg.Pool, auth: AuthConfig = authConfig(), opts: 
   app.post('/api/leave/:id/withdraw', async (req, res) => {
     const ok = await withdrawLeave(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: isManager(req.user!.role) });
     res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  // Medical certificates: the person or a manager attaches a photo or PDF (base64 data URL).
+  app.get('/api/leave/:id/documents', async (req, res) => {
+    const rows = await listLeaveDocuments(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: isManager(req.user!.role) });
+    if (!rows) return void res.status(404).json({ error: 'not_found' });
+    res.json(rows);
+  });
+
+  app.post('/api/leave/:id/documents', async (req, res) => {
+    const m = typeof req.body.data === 'string' ? /^data:([\w/+.-]+);base64,([A-Za-z0-9+/=]+)$/.exec(req.body.data) : null;
+    if (!m) throw new BadRequest('data must be a base64 data URL');
+    const out = await addLeaveDocument(
+      pool,
+      parseId(req.params.id, 'id'),
+      { fileName: text(req.body.fileName) ?? 'certificate', mediaType: m[1], data: Buffer.from(m[2], 'base64') },
+      { id: req.user!.id, isAdmin: isManager(req.user!.role) },
+    );
+    res.status(out.ok ? 201 : out.status).json(out);
+  });
+
+  app.get('/api/leave-documents/:id', async (req, res) => {
+    const doc = await getLeaveDocument(pool, parseId(req.params.id, 'id'), { id: req.user!.id, isAdmin: isManager(req.user!.role) });
+    if (!doc) return void res.status(404).json({ error: 'not_found' });
+    res.setHeader('content-type', doc.mediaType);
+    res.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(doc.fileName)}`);
+    res.setHeader('cache-control', 'private, max-age=3600');
+    res.send(doc.data);
   });
 
   // ---- Shift swaps: hand my place to someone, or trade places with them; the admin approves.
