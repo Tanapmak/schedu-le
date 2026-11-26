@@ -4,6 +4,7 @@ import { creditResolver } from './credit.js';
 import { hoursOf, LEAVE_REASONS, type Credit } from './rules/index.js';
 import { FORGOT_RECORD_DEDUCTION, resultsBySession } from './results.js';
 import { monthSummary } from './liveSummary.js';
+import { performanceReport, type PerfRow } from './performanceReport.js';
 import { monthRange } from './sessions.js';
 import { listPeople, listRooms, sessionsBetween, type Db } from './store.js';
 
@@ -19,6 +20,7 @@ const bkk = (d: Date) => new Date(d.getTime() + 7 * 3_600_000);
 const dateCell = (d: Date) => bkk(d).toISOString().slice(0, 10);
 const timeCell = (d: Date) => bkk(d).toISOString().slice(11, 16);
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const lastDayOf = (to: Date) => dateCell(new Date(to.getTime() - 1));
 const timeslot = (s: { start: Date; end: Date }) => `${timeCell(s.start)} - ${timeCell(s.end)}`;
 
 function header(ws: ExcelJS.Worksheet, columns: { header: string; key: string; width: number; numFmt?: string }[]) {
@@ -301,6 +303,61 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     ul.addRow({ nickname: p.nickname, position: p.position.toUpperCase(), total: Object.values(counts).reduce((a, n) => a + n, 0), ...counts });
   }
   if (byPerson.size === 0) ul.addRow({ nickname: 'No urgent leave this month' });
+
+  // ---- Live performance: GMV per person and per room, this month and accumulated over every
+  // live the system holds (imported history + app results), with each one's best single live.
+  const perf = await performanceReport(db, from, to);
+  const pf = wb.addWorksheet('Live performance', { properties: { tabColor: { argb: RED } } });
+  const perfCols = [
+    { title: 'Name', width: 16 },
+    { title: 'Role', width: 7 },
+    { title: 'Lives (month)', width: 13, numFmt: '0' },
+    { title: 'Hours (month)', width: 13, numFmt: '0.0' },
+    { title: 'GMV (month)', width: 14, numFmt: '#,##0' },
+    { title: 'GMV/h (month)', width: 14, numFmt: '#,##0' },
+    { title: 'Lives (all)', width: 11, numFmt: '#,##0' },
+    { title: 'Hours (all)', width: 11, numFmt: '#,##0.0' },
+    { title: 'Accumulated GMV', width: 17, numFmt: '#,##0' },
+    { title: 'GMV/h (all)', width: 12, numFmt: '#,##0' },
+    { title: 'Record GMV (best live)', width: 21, numFmt: '#,##0' },
+    { title: 'Record date', width: 12 },
+    { title: 'Record time', width: 13 },
+    { title: 'Record room', width: 12 },
+    { title: 'Data since', width: 12 },
+  ];
+  pf.columns = perfCols.map((c) => ({ width: c.width, style: c.numFmt ? { numFmt: c.numFmt } : {} }));
+  pf.addRow([`Live performance up to ${lastDayOf(to)}: every live in the system (history sheet + app results). Month = ${month}. Record = best single live by GMV.`]).font = { italic: true };
+  const perfTable = (title: string, rows: PerfRow[], empty: string) => {
+    pf.addRow([]);
+    pf.addRow([title]).font = { bold: true, size: 13 };
+    const head = pf.addRow(perfCols.map((c) => c.title));
+    head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLACK } };
+    if (rows.length === 0) pf.addRow([empty]);
+    for (const r of rows) {
+      const row = pf.addRow([
+        r.name,
+        r.role?.toUpperCase() ?? '',
+        r.periodLives,
+        round2(r.periodHours),
+        round2(r.periodGmv),
+        r.periodHours ? round2(r.periodGmv / r.periodHours) : null,
+        r.lives,
+        round2(r.hours),
+        round2(r.gmv),
+        r.hours ? round2(r.gmv / r.hours) : null,
+        round2(r.best.gmv),
+        dateCell(r.best.start),
+        timeslot({ start: r.best.start, end: new Date(r.best.start.getTime() + r.best.hours * 3_600_000) }),
+        r.best.room,
+        dateCell(r.first),
+      ]);
+      if (r.role && !perf.inTeam(r.name)) row.font = { color: { argb: 'FF888888' } };
+    }
+  };
+  perfTable('By person (grey = name from the history sheet, not in the team now)', perf.people, 'No lives with GMV yet');
+  perfTable('By room', perf.rooms, 'No lives with GMV yet');
+  pf.views = [{ state: 'frozen', xSplit: 1 }];
 
   return wb;
 }
