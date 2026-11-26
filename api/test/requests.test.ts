@@ -285,7 +285,11 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const { rows: log } = await pool.query(`SELECT after FROM audit_log WHERE action = 'hours_credit'`);
     expect(log[0].after).toMatchObject({ personId: 1, credit: 'no', note: 'เห็นไลฟ์ส่วนตัว' });
 
-    // Payroll Sessions sheet: everyone on every live or cancelled session, with timeslot and hours earned.
+    // Payroll Sessions sheet: everyone on every live or cancelled session, with timeslot, hours earned and clock times.
+    await pool.query(
+      `INSERT INTO attendance (person_id, session_id, clock_in_at, clock_out_at, in_area) VALUES (1, $1, '2020-03-10T09:52:00+07:00', '2020-03-10T12:04:00+07:00', true)`,
+      [morning],
+    );
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await (await fetch(`${base}/api/export/payroll?month=2020-03`)).arrayBuffer()) as unknown as ExcelJS.Buffer);
     const sheet = wb.getWorksheet('Sessions')!;
@@ -298,6 +302,10 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
       ['20:00 - 22:00', 'MC A', 0], // replaced
     ]));
     expect(lines).toHaveLength(6);
+    const clock = sheet.getRows(2, sheet.rowCount - 1)!
+      .filter((r) => r.getCell('D').value === '10:00 - 12:00')
+      .map((r) => [r.getCell('G').value, r.getCell('P').value ?? null, r.getCell('Q').value ?? null, r.getCell('R').value ?? null]);
+    expect(clock).toEqual(expect.arrayContaining([['MC A', '09:52', '12:04', null], ['PD A', null, null, 'No clock-in']]));
 
     // Medical certificates: the person or a manager, never someone else.
     const pdf = `data:application/pdf;base64,${Buffer.from('%PDF-1.4 cert').toString('base64')}`;
@@ -450,7 +458,7 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     expect([pdA.getCell('O').value, pdA.getCell('P').value]).toEqual([2, 1000]);
     expect(wb.getWorksheet('Missing results')!.rowCount).toBe(3);
     // Sessions sheet: the result status on every line, the 500 only on the PD's line.
-    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('G').value, r.getCell('R').value, r.getCell('S').value ?? null, r.getCell('T').value ?? null]);
+    const lines = wb.getWorksheet('Sessions')!.getRows(2, 4)!.map((r) => [r.getCell('G').value, r.getCell('U').value, r.getCell('V').value ?? null, r.getCell('W').value ?? null]);
     expect(lines).toEqual(expect.arrayContaining([['PD A', 'missing', 500, 'Charged'], ['MC A', 'missing', null, null], ['PD A', 'late', 500, 'Charged']]));
   });
 

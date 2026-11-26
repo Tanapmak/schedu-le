@@ -47,6 +47,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     const x = liveOf.get(sessionId);
     return Boolean(x && (x.status === 'missing' || x.status === 'late') && x.responsible.includes(personId));
   };
+  const clocks = await clockBySession(db, sessions.map((s) => s.id));
   const lastDay = dateCell(new Date(live.cutoff.getTime() - 1));
   const deductionStatus = (fined: boolean) => (fined ? 'Charged' : `Pending: record by ${lastDay}`);
 
@@ -146,6 +147,9 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Cancel reason', key: 'reason', width: 20 },
     { header: 'Hours credit', key: 'credit', width: 50 },
     { header: 'Hours earned', key: 'earned', width: 13, numFmt: '0.0' },
+    { header: 'Clock in', key: 'clockIn', width: 10 },
+    { header: 'Clock out', key: 'clockOut', width: 10 },
+    { header: 'Clock note', key: 'clockNote', width: 28 },
     { header: 'GMV (screen)', key: 'gmv', width: 14, numFmt: '#,##0' },
     { header: 'Orders', key: 'orders', width: 9 },
     { header: 'Result', key: 'result', width: 11 },
@@ -172,6 +176,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       credit: creditText(c, l.st.creditNote),
       // A number, so the column sums; "Pending" (ignored by SUM) until the hours are decided.
       earned: c.status === 'credited' ? round2(hoursOf(l.s)) : c.status === 'pending' ? 'Pending' : 0,
+      ...clockCells(l.s, clocks.get(`${l.s.id}:${l.st.personId}`), Boolean(l.st.replaced), now),
       // Results stay off lines that earn no commission (replaced people, cancelled sessions).
       gmv: l.result && c.status === 'credited' ? round2(l.result.gmv) : undefined,
       orders: c.status === 'credited' ? l.result?.orders : undefined,
@@ -298,6 +303,55 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
   if (byPerson.size === 0) ul.addRow({ nickname: 'No urgent leave this month' });
 
   return wb;
+}
+
+interface Clock {
+  in: Date;
+  out: Date | null;
+  status: 'ok' | 'pending' | 'approved' | 'rejected';
+  offsiteReason: string | null;
+  adjustedHours: number | null;
+  corrected: boolean;
+}
+
+/** Each person's clock record per session, keyed "sessionId:personId". */
+async function clockBySession(db: Db, sessionIds: number[]): Promise<Map<string, Clock>> {
+  const { rows } = await db.query(
+    `SELECT session_id::int, person_id::int, clock_in_at, clock_out_at, status, offsite_reason, adjusted_hours, correction_id
+       FROM attendance WHERE session_id = ANY($1)`,
+    [sessionIds],
+  );
+  return new Map(
+    rows.map((r) => [
+      `${r.session_id}:${r.person_id}`,
+      {
+        in: new Date(r.clock_in_at),
+        out: r.clock_out_at ? new Date(r.clock_out_at) : null,
+        status: r.status,
+        offsiteReason: r.offsite_reason,
+        adjustedHours: r.adjusted_hours === null ? null : Number(r.adjusted_hours),
+        corrected: r.correction_id !== null,
+      },
+    ]),
+  );
+}
+
+/** Actual clock-in/out times (date added when not the session's date) and what is unusual about them. */
+function clockCells(s: { start: Date; end: Date; status: string }, c: Clock | undefined, replaced: boolean, now: Date) {
+  const at = (d: Date) => (dateCell(d) === dateCell(s.start) ? timeCell(d) : `${dateCell(d)} ${timeCell(d)}`);
+  if (!c) {
+    const missed = s.status === 'published' && !replaced && s.end < now;
+    return { clockNote: missed ? 'No clock-in' : undefined };
+  }
+  const notes: string[] = [];
+  if (c.offsiteReason) {
+    const st = c.status === 'pending' ? 'waiting for admin' : c.status === 'rejected' ? 'rejected' : 'approved';
+    notes.push(`Off-site (${st}): ${c.offsiteReason}`);
+  }
+  if (!c.out) notes.push(s.end < now ? 'Forgot to clock out' : 'Still clocked in');
+  if (c.corrected) notes.push('Time corrected');
+  if (c.adjustedHours !== null) notes.push(`Hours set by admin: ${c.adjustedHours}`);
+  return { clockIn: at(c.in), clockOut: c.out ? at(c.out) : undefined, clockNote: notes.join('; ') || undefined };
 }
 
 const REASON_LABEL: Record<string, string> = {
