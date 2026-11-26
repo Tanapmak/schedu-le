@@ -49,9 +49,18 @@ export async function listPeople(db: Db): Promise<PersonRow[]> {
   }));
 }
 
+/** Where an off-site session happens; clock in/out checks this place instead of the studio. */
+export interface OffsitePlace {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
 export interface SessionRow extends Session {
   id: number;
   location: string;
+  offsite: OffsitePlace | null;
   note: string | null;
   cancelReason: string | null;
   cancelReasonCode: string | null;
@@ -60,7 +69,7 @@ export interface SessionRow extends Session {
 
 const sessionSelect = `
   SELECT s.id::int, s.room_id::int, lower(s.period) AS start, upper(s.period) AS "end", s.status,
-         s.location, s.note, s.cancel_reason, s.cancel_reason_code, s.count_hours_when_cancelled,
+         s.location, s.offsite_name, s.offsite_lat, s.offsite_lng, s.offsite_radius_m, s.note, s.cancel_reason, s.cancel_reason_code, s.count_hours_when_cancelled,
          COALESCE(json_agg(json_build_object('personId', st.person_id, 'role', st.role, 'replaced', st.replaced,
                                            'hoursCredit', st.hours_credit, 'creditNote', st.credit_note)
                   ORDER BY st.role, st.id) FILTER (WHERE st.id IS NOT NULL), '[]') AS staff
@@ -74,6 +83,10 @@ const toSession = (r: any): SessionRow => ({
   end: r.end,
   status: r.status,
   location: r.location,
+  offsite:
+    r.location === 'offsite' && r.offsite_lat !== null
+      ? { name: r.offsite_name ?? '', lat: r.offsite_lat, lng: r.offsite_lng, radiusM: r.offsite_radius_m }
+      : null,
   note: r.note,
   cancelReason: r.cancel_reason,
   cancelReasonCode: r.cancel_reason_code,
@@ -120,16 +133,25 @@ export interface SessionInput {
   roomId: number;
   start: Date;
   end: Date;
+  /** Left out: a new session is at the studio, an edited one keeps its place. */
   location?: 'studio' | 'offsite' | 'home';
+  /** Needed when location is 'offsite'. */
+  offsite?: OffsitePlace | null;
   note?: string | null;
   staff: StaffAssignment[];
 }
 
+/** Values for offsite_name, offsite_lat, offsite_lng, offsite_radius_m. */
+function placeValues(s: SessionInput) {
+  const o = s.location === 'offsite' ? s.offsite : null;
+  return [o?.name ?? null, o?.lat ?? null, o?.lng ?? null, o?.radiusM ?? 300];
+}
+
 export async function insertSession(db: Db, s: SessionInput, createdBy?: number): Promise<number> {
   const { rows } = await db.query(
-    `INSERT INTO sessions (room_id, period, location, note, created_by)
-     VALUES ($1, tstzrange($2, $3), $4, $5, $6) RETURNING id::int`,
-    [s.roomId, s.start, s.end, s.location ?? 'studio', s.note ?? null, createdBy ?? null],
+    `INSERT INTO sessions (room_id, period, location, note, created_by, offsite_name, offsite_lat, offsite_lng, offsite_radius_m)
+     VALUES ($1, tstzrange($2, $3), $4, $5, $6, $7, $8, $9, $10) RETURNING id::int`,
+    [s.roomId, s.start, s.end, s.location ?? 'studio', s.note ?? null, createdBy ?? null, ...placeValues(s)],
   );
   const id: number = rows[0].id;
   await replaceStaff(db, id, s.staff);
@@ -137,10 +159,20 @@ export async function insertSession(db: Db, s: SessionInput, createdBy?: number)
 }
 
 export async function updateSession(db: Db, id: number, s: SessionInput): Promise<void> {
-  await db.query(
-    `UPDATE sessions SET room_id = $2, period = tstzrange($3, $4), location = $5, note = $6 WHERE id = $1`,
-    [id, s.roomId, s.start, s.end, s.location ?? 'studio', s.note ?? null],
-  );
+  await db.query(`UPDATE sessions SET room_id = $2, period = tstzrange($3, $4), note = $5 WHERE id = $1`, [
+    id,
+    s.roomId,
+    s.start,
+    s.end,
+    s.note ?? null,
+  ]);
+  // Moving a session on the board sends no place: it stays where it was.
+  if (s.location !== undefined) {
+    await db.query(
+      `UPDATE sessions SET location = $2, offsite_name = $3, offsite_lat = $4, offsite_lng = $5, offsite_radius_m = $6 WHERE id = $1`,
+      [id, s.location, ...placeValues(s)],
+    );
+  }
   await replaceStaff(db, id, s.staff);
 }
 

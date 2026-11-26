@@ -4,7 +4,7 @@ import { t, type Lang, type StringKey } from './i18n';
 import { LeaveForm } from './LeaveForm';
 import { RequestList } from './Requests';
 import { SwapForm } from './SwapForm';
-import { StatusPill, Tabs } from './ui';
+import { OffsiteLine, StatusPill, Tabs } from './ui';
 import { addDays, bkkDate, bkkInstant, bkkTime, formatDay, hoursBetween, todayBkk, liveDate } from './time';
 import type { ReactNode } from 'react';
 
@@ -125,6 +125,7 @@ export function MySchedule({ lang, user, people, rooms, children }: Props) {
                         {hoursBetween(start, new Date(s.end))} {t(lang, 'hoursSuffix')}
                         {partners.length > 0 && ` · ${t(lang, 'with')} ${partners.join(', ')}`}
                       </small>
+                      <OffsiteLine lang={lang} session={s} />
                       {l && (
                         <small className="leave-note">
                           {t(lang, 'leave')} · <StatusPill lang={lang} status={l.status} />
@@ -253,6 +254,7 @@ function NextLive({
         {codeOf(s.roomId)}
         {partners.length > 0 && ` · ${t(lang, 'with')} ${partners.join(', ')}`}
       </span>
+      <OffsiteLine lang={lang} session={s} />
       {start.getTime() > Date.now() && (
         <div className="next-actions">
           <button disabled={swapPending} onClick={onSwap}>

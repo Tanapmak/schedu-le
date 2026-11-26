@@ -683,7 +683,15 @@ function SessionChip({ lang, session: s, room, meId, nameOf, onOpen, hit, badge 
   return (
     <button
       className={cls}
-      title={[onLeave && `${t(lang, hit!.status === 'approved' ? 'needsCover' : 'leavePendingOn')}: ${onLeave}`, s.note].filter(Boolean).join('\n') || undefined}
+      title={
+        [
+          onLeave && `${t(lang, hit!.status === 'approved' ? 'needsCover' : 'leavePendingOn')}: ${onLeave}`,
+          s.location === 'offsite' && `📍 ${t(lang, 'offsiteBadge')}: ${s.offsite?.name ?? ''}`,
+          s.note,
+        ]
+          .filter(Boolean)
+          .join('\n') || undefined
+      }
       onClick={(e) => {
         e.stopPropagation();
         onOpen?.();
@@ -696,6 +704,7 @@ function SessionChip({ lang, session: s, room, meId, nameOf, onOpen, hit, badge 
         {s.status === 'cancelled' && ` · ${t(lang, 'cancelled')}`}
         {missingPd && s.status !== 'cancelled' && ` · ${t(lang, 'noPd')}`}
       </span>
+      {s.location === 'offsite' && <span className="offsite-flag">📍 {s.offsite?.name || t(lang, 'offsiteBadge')}</span>}
       {hit && (
         <span className="leave-flag">
           {t(lang, hit.status === 'approved' ? 'needsCover' : 'leavePendingOn')}: {onLeave}

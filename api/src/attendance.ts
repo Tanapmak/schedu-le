@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import type { Db } from './store.js';
+import type { Db, OffsitePlace } from './store.js';
 
 /** Great-circle distance in metres. */
 export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
@@ -45,14 +45,21 @@ export interface MySession {
   end: string;
   role: 'mc' | 'pd';
   location: 'studio' | 'offsite' | 'home';
-  offsite: { lat: number; lng: number } | null;
+  offsite: OffsitePlace | null;
+}
+
+/** The session's off-site place from a row with offsite_* columns (null when at the studio). */
+export function offsiteOf(r: any): OffsitePlace | null {
+  return r.offsite_lat === null || r.offsite_lat === undefined
+    ? null
+    : { name: r.offsite_name ?? '', lat: r.offsite_lat, lng: r.offsite_lng, radiusM: r.offsite_radius_m ?? 300 };
 }
 
 /** The person's published sessions overlapping [from, to), earliest first. */
 async function mySessions(db: Db, personId: number, from: Date, to: Date): Promise<MySession[]> {
   const { rows } = await db.query(
     `SELECT s.id::int, s.room_id::int, lower(s.period) AS start, upper(s.period) AS "end", st.role,
-            s.location::text AS location, s.offsite_lat, s.offsite_lng
+            s.location::text AS location, s.offsite_name, s.offsite_lat, s.offsite_lng, s.offsite_radius_m
        FROM sessions s JOIN session_staff st ON st.session_id = s.id
       WHERE st.person_id = $1 AND NOT st.replaced AND s.status = 'published' AND s.period && tstzrange($2, $3)
       ORDER BY lower(s.period)`,
@@ -65,21 +72,22 @@ async function mySessions(db: Db, personId: number, from: Date, to: Date): Promi
     end: new Date(r.end).toISOString(),
     role: r.role,
     location: r.location,
-    offsite: r.offsite_lat === null ? null : { lat: r.offsite_lat, lng: r.offsite_lng },
+    offsite: offsiteOf(r),
   }));
 }
 
 /** Where the person may clock in for a session: in area, how far from the nearest allowed place. */
 export function checkArea(
-  session: Pick<MySession, 'location' | 'offsite'>,
+  session: { location: MySession['location']; offsite: (Pick<OffsitePlace, 'lat' | 'lng'> & { radiusM?: number }) | null },
   studios: Studio[],
   at: { lat: number; lng: number } | null,
 ): { inArea: boolean; distanceM: number | null } {
   if (session.location === 'home') return { inArea: true, distanceM: null };
+  // An off-site session is checked against its own place only (overrides the studio); in area there needs no approval.
   // No studio set up yet: nothing to check against.
   const places =
     session.location === 'offsite' && session.offsite
-      ? [{ ...session.offsite, radiusM: 300 }]
+      ? [{ lat: session.offsite.lat, lng: session.offsite.lng, radiusM: session.offsite.radiusM ?? 300 }]
       : studios.map((s) => ({ lat: s.lat, lng: s.lng, radiusM: s.radiusM }));
   if (places.length === 0) return { inArea: true, distanceM: null };
   if (!at) return { inArea: false, distanceM: null };
@@ -198,7 +206,7 @@ export async function clockIn(pool: pg.Pool, personId: number, at: Fix | null, r
 
 export async function clockOut(db: Db, personId: number, at: Fix | null, now: Date): Promise<ClockResult> {
   const { rows } = await db.query(
-    `SELECT a.id::int, a.session_id::int, a.status, s.location::text AS location, s.offsite_lat, s.offsite_lng
+    `SELECT a.id::int, a.session_id::int, a.status, s.location::text AS location, s.offsite_name, s.offsite_lat, s.offsite_lng, s.offsite_radius_m
        FROM attendance a LEFT JOIN sessions s ON s.id = a.session_id
       WHERE a.person_id = $1 AND a.clock_out_at IS NULL`,
     [personId],
@@ -206,7 +214,7 @@ export async function clockOut(db: Db, personId: number, at: Fix | null, now: Da
   const open = rows[0];
   if (!open) return { ok: false, status: 409, error: 'not_clocked_in' };
   const area = checkArea(
-    { location: open.location ?? 'studio', offsite: open.offsite_lat === null ? null : { lat: open.offsite_lat, lng: open.offsite_lng } },
+    { location: open.location ?? 'studio', offsite: offsiteOf(open) },
     await listStudios(db),
     at,
   );
@@ -253,6 +261,7 @@ export async function dayAttendance(db: Db, date: string, now: Date) {
   const to = new Date(from.getTime() + 86_400_000);
   const { rows: staff } = await db.query(
     `SELECT s.id::int AS session_id, s.room_id::int, lower(s.period) AS start, upper(s.period) AS "end", s.status::text,
+            s.location::text AS location, s.offsite_name, s.offsite_lat, s.offsite_lng, s.offsite_radius_m,
             st.person_id::int, st.role
        FROM sessions s JOIN session_staff st ON st.session_id = s.id
       WHERE NOT st.replaced AND s.status IN ('published', 'cancelled') AND lower(s.period) >= $1 AND lower(s.period) < $2
@@ -266,7 +275,15 @@ export async function dayAttendance(db: Db, date: string, now: Date) {
   const records = rows.map(toRow);
   const window = await windowMinutes(db);
   const out = staff.map((s) => {
-    const session = { id: s.session_id, roomId: s.room_id, start: new Date(s.start).toISOString(), end: new Date(s.end).toISOString(), status: s.status };
+    const session = {
+      id: s.session_id,
+      roomId: s.room_id,
+      start: new Date(s.start).toISOString(),
+      end: new Date(s.end).toISOString(),
+      status: s.status,
+      location: s.location,
+      offsite: s.location === 'offsite' ? offsiteOf(s) : null,
+    };
     const a = records.find((r) => r.sessionId === s.session_id && r.personId === s.person_id) ?? null;
     const lateMin = a ? Math.max(0, Math.floor((new Date(a.clockInAt).getTime() - new Date(session.start).getTime()) / 60_000)) : 0;
     const counted = a ? countedHours(a, session, now) : { hours: 0, forgotOut: false };

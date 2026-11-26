@@ -146,6 +146,48 @@ describe.skipIf(!url)('clock in / clock out', () => {
     expect(again.body.rows.find((r: any) => r.personId === 1).countedHours).toBe(1.5);
   });
 
+  it('checks an off-site session against its own place, not the studio, and needs no approval there', async () => {
+    const id = await sessionIn(-5);
+    await pool.query(
+      `UPDATE sessions SET location = 'offsite', offsite_name = 'Central World', offsite_lat = $2, offsite_lng = $3, offsite_radius_m = 200 WHERE id = $1`,
+      [id, FAR.lat, FAR.lng],
+    );
+    const me = await call('GET', '/api/attendance/me');
+    expect(me.body.session).toMatchObject({ location: 'offsite', offsite: { name: 'Central World', radiusM: 200 } });
+    // At the studio is out of area for this session.
+    expect((await call('POST', '/api/attendance/clock-in', IN)).body.error).toBe('out_of_area_needs_reason');
+    const res = await call('POST', '/api/attendance/clock-in', { lat: FAR.lat + 0.001, lng: FAR.lng });
+    expect(res.body).toMatchObject({ ok: true, inArea: true, status: 'ok' });
+    expect((await call('POST', '/api/attendance/clock-out', FAR)).body).toMatchObject({ ok: true, inArea: true });
+  });
+
+  it('takes time corrections for an off-site session only at the studio', async () => {
+    const id = await sessionIn(-150, 120);
+    await pool.query(`UPDATE sessions SET location = 'offsite', offsite_name = 'Mall', offsite_lat = $2, offsite_lng = $3 WHERE id = $1`, [id, FAR.lat, FAR.lng]);
+    const start = Date.now() - 150 * 60_000;
+    const ask = { sessionId: id, clockInAt: new Date(start).toISOString(), clockOutAt: new Date(start + 120 * 60_000).toISOString(), reason: 'ลืมกด' };
+    expect((await call('POST', '/api/attendance/corrections', { ...ask, ...FAR })).body.error).toBe('out_of_area');
+    expect((await call('POST', '/api/attendance/corrections', { ...ask, ...IN })).status).toBe(201);
+  });
+
+  it('saves a session place from the form and keeps it when the session is moved', async () => {
+    const room = (await pool.query(`SELECT id::int FROM rooms WHERE code = 'TTS 2'`)).rows[0].id;
+    const start = new Date('2031-03-03T10:00:00+07:00');
+    const end = new Date('2031-03-03T12:00:00+07:00');
+    const body = { roomId: room, start: start.toISOString(), end: end.toISOString(), staff: [{ personId: 1, role: 'mc' }, { personId: 2, role: 'pd' }] };
+    expect((await call('POST', '/api/sessions', { ...body, location: 'offsite', offsite: { name: '', lat: 1, lng: 1 } }, BOSS)).status).toBe(400);
+    const made = await call('POST', '/api/sessions', { ...body, location: 'offsite', offsite: { name: 'Siam Paragon', lat: 13.746, lng: 100.535, radiusM: 250 }, confirm: true }, BOSS);
+    expect(made.body.ok).toBe(true);
+    // A board drag sends no place: it stays off-site.
+    expect((await call('PUT', `/api/sessions/${made.body.id}`, { ...body, start: new Date(start.getTime() + 3_600_000).toISOString(), end: new Date(end.getTime() + 3_600_000).toISOString(), confirm: true }, BOSS)).body.ok).toBe(true);
+    let row = (await pool.query(`SELECT location::text, offsite_name, offsite_radius_m FROM sessions WHERE id = $1`, [made.body.id])).rows[0];
+    expect(row).toEqual({ location: 'offsite', offsite_name: 'Siam Paragon', offsite_radius_m: 250 });
+    // Back to the studio clears the place.
+    await call('PUT', `/api/sessions/${made.body.id}`, { ...body, location: 'studio', confirm: true }, BOSS);
+    row = (await pool.query(`SELECT location::text, offsite_name, offsite_lat FROM sessions WHERE id = $1`, [made.body.id])).rows[0];
+    expect(row).toEqual({ location: 'studio', offsite_name: null, offsite_lat: null });
+  });
+
   it('has nothing to clock in for without a session', async () => {
     expect((await call('POST', '/api/attendance/clock-in', IN)).body.error).toBe('no_session');
   });

@@ -156,6 +156,8 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Forgot-to-record (THB)', key: 'deduction', width: 22, numFmt: '#,##0' },
     { header: 'Deduction status', key: 'deductionStatus', width: 26 },
     { header: 'Session ID', key: 'id', width: 10 },
+    // Last, so the columns before it keep their letters.
+    { header: 'Location', key: 'location', width: 26 },
   ];
   const detailRow = (l: (typeof lines)[number]) => {
     const c = credit(l.s, l.st);
@@ -166,6 +168,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       timeslot: timeslot(l.s),
       hours: round2(hoursOf(l.s)),
       room: l.room.code,
+      location: locationText(l.s),
       person: l.person.nickname,
       position: l.person.position.toUpperCase(),
       employment: l.person.employment,
@@ -409,6 +412,12 @@ function clockCells(s: { start: Date; end: Date; status: string }, c: Clock | un
   if (c.corrected) notes.push('Time corrected');
   if (c.adjustedHours !== null) notes.push(`Hours set by admin: ${c.adjustedHours}`);
   return { clockIn: at(c.in), clockOut: c.out ? at(c.out) : undefined, clockNote: notes.join('; ') || undefined };
+}
+
+/** "Studio", or "Off-site: <place>" for a session set somewhere else. */
+function locationText(s: { location: string; offsite: { name: string } | null }): string {
+  if (s.location === 'offsite') return `Off-site: ${s.offsite?.name || '-'}`;
+  return s.location === 'home' ? 'Home' : 'Studio';
 }
 
 const REASON_LABEL: Record<string, string> = {
