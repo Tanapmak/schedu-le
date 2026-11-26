@@ -19,6 +19,7 @@ const bkk = (d: Date) => new Date(d.getTime() + 7 * 3_600_000);
 const dateCell = (d: Date) => bkk(d).toISOString().slice(0, 10);
 const timeCell = (d: Date) => bkk(d).toISOString().slice(11, 16);
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const timeslot = (s: { start: Date; end: Date }) => `${timeCell(s.start)} - ${timeCell(s.end)}`;
 
 function header(ws: ExcelJS.Worksheet, columns: { header: string; key: string; width: number; numFmt?: string }[]) {
   ws.columns = columns.map(({ numFmt, ...c }) => ({ ...c, style: numFmt ? { numFmt } : {} }));
@@ -46,6 +47,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     const x = liveOf.get(sessionId);
     return Boolean(x && (x.status === 'missing' || x.status === 'late') && x.responsible.includes(personId));
   };
+  const clocks = await clockBySession(db, sessions.map((s) => s.id));
   const lastDay = dateCell(new Date(live.cutoff.getTime() - 1));
   const deductionStatus = (fined: boolean) => (fined ? 'Charged' : `Pending: record by ${lastDay}`);
 
@@ -56,6 +58,14 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       .map((st) => ({ s, st, person: people.get(st.personId)!, room: rooms.get(s.roomId)!, result: results.get(s.id) }))
       .filter((l) => l.person && l.person.employment !== 'guest'),
   );
+  // The Sessions sheet lists everyone on every live or cancelled session, with the hours each
+  // one earned, so payroll can be checked on one sheet (cancelled and replaced lines earn 0 or wait).
+  const sheetLines = sessions
+    .filter((s) => s.status === 'published' || s.status === 'cancelled')
+    .flatMap((s) =>
+      s.staff.map((st) => ({ s, st, person: people.get(st.personId)!, room: rooms.get(s.roomId)!, result: results.get(s.id) })),
+    )
+    .filter((l) => l.person && l.person.employment !== 'guest');
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Schedu-le';
@@ -125,6 +135,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Date', key: 'date', width: 12 },
     { header: 'Start', key: 'start', width: 8 },
     { header: 'End', key: 'end', width: 8 },
+    { header: 'Timeslot', key: 'timeslot', width: 14 },
     { header: 'Hours', key: 'hours', width: 8, numFmt: '0.0' },
     { header: 'Room', key: 'room', width: 9 },
     { header: 'Person', key: 'person', width: 14 },
@@ -134,7 +145,11 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'With', key: 'with', width: 18 },
     { header: 'Status', key: 'status', width: 11 },
     { header: 'Cancel reason', key: 'reason', width: 20 },
-    { header: 'Hours credit', key: 'credit', width: 34 },
+    { header: 'Hours credit', key: 'credit', width: 50 },
+    { header: 'Hours earned', key: 'earned', width: 13, numFmt: '0.0' },
+    { header: 'Clock in', key: 'clockIn', width: 10 },
+    { header: 'Clock out', key: 'clockOut', width: 10 },
+    { header: 'Clock note', key: 'clockNote', width: 28 },
     { header: 'GMV (screen)', key: 'gmv', width: 14, numFmt: '#,##0' },
     { header: 'Orders', key: 'orders', width: 9 },
     { header: 'Result', key: 'result', width: 11 },
@@ -142,32 +157,40 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Deduction status', key: 'deductionStatus', width: 26 },
     { header: 'Session ID', key: 'id', width: 10 },
   ];
-  const detailRow = (l: (typeof lines)[number]) => ({
-    date: dateCell(l.s.start),
-    start: timeCell(l.s.start),
-    end: timeCell(l.s.end),
-    hours: round2(hoursOf(l.s)),
-    room: l.room.code,
-    person: l.person.nickname,
-    position: l.person.position.toUpperCase(),
-    employment: l.person.employment,
-    role: l.st.role.toUpperCase(),
-    with: l.s.staff.filter((x) => x.personId !== l.st.personId && !x.replaced).map((x) => people.get(x.personId)?.nickname).join(', '),
-    status: l.s.status,
-    reason: cancelReasonText(l.s),
-    credit: l.s.status === 'cancelled' ? creditText(credit(l.s, l.st), l.st.creditNote) : '',
-    gmv: l.result ? round2(l.result.gmv) : undefined,
-    orders: l.result?.orders,
-    result: liveOf.get(l.s.id)?.status ?? '',
-    // On the PD's line only. Charged once results close; until then it is what is at stake.
-    ...(charged(l.s.id, l.st.personId)
-      ? { deduction: FORGOT_RECORD_DEDUCTION, deductionStatus: deductionStatus(liveOf.get(l.s.id)!.fined) }
-      : {}),
-    id: l.s.id,
-  });
+  const detailRow = (l: (typeof lines)[number]) => {
+    const c = credit(l.s, l.st);
+    return {
+      date: dateCell(l.s.start),
+      start: timeCell(l.s.start),
+      end: timeCell(l.s.end),
+      timeslot: timeslot(l.s),
+      hours: round2(hoursOf(l.s)),
+      room: l.room.code,
+      person: l.person.nickname,
+      position: l.person.position.toUpperCase(),
+      employment: l.person.employment,
+      role: l.st.role.toUpperCase(),
+      with: l.s.staff.filter((x) => x.personId !== l.st.personId && !x.replaced).map((x) => people.get(x.personId)?.nickname).join(', '),
+      status: l.s.status,
+      reason: cancelReasonText(l.s),
+      credit: creditText(c, l.st.creditNote),
+      // A number, so the column sums; "Pending" (ignored by SUM) until the hours are decided.
+      earned: c.status === 'credited' ? round2(hoursOf(l.s)) : c.status === 'pending' ? 'Pending' : 0,
+      ...clockCells(l.s, clocks.get(`${l.s.id}:${l.st.personId}`), Boolean(l.st.replaced), now),
+      // Results stay off lines that earn no commission (replaced people, cancelled sessions).
+      gmv: l.result && c.status === 'credited' ? round2(l.result.gmv) : undefined,
+      orders: c.status === 'credited' ? l.result?.orders : undefined,
+      result: liveOf.get(l.s.id)?.status ?? '',
+      // On the PD's line only. Charged once results close; until then it is what is at stake.
+      ...(charged(l.s.id, l.st.personId)
+        ? { deduction: FORGOT_RECORD_DEDUCTION, deductionStatus: deductionStatus(liveOf.get(l.s.id)!.fined) }
+        : {}),
+      id: l.s.id,
+    };
+  };
   const detail = wb.addWorksheet('Sessions');
   header(detail, detailColumns);
-  for (const l of lines) detail.addRow(detailRow(l));
+  for (const l of sheetLines) detail.addRow(detailRow(l));
 
   // ---- Freelance: each freelancer's lives with a total, for accounting.
   const fl = wb.addWorksheet('Freelance', { properties: { tabColor: { argb: BLACK } } });
@@ -179,6 +202,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     const total = fl.addRow({
       date: `Total ${people.get(id)!.nickname}`,
       hours: round2(mine.reduce((a, l) => a + hoursOf(l.s), 0)),
+      earned: round2(mine.reduce((a, l) => a + hoursOf(l.s), 0)),
       room: `${mine.length} lives`,
       gmv: round2(mine.reduce((a, l) => a + (l.result?.gmv ?? 0), 0)),
     });
@@ -222,6 +246,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Date', key: 'date', width: 12 },
     { header: 'Start', key: 'start', width: 8 },
     { header: 'End', key: 'end', width: 8 },
+    { header: 'Timeslot', key: 'timeslot', width: 14 },
     { header: 'Hours', key: 'hours', width: 8, numFmt: '0.0' },
     { header: 'Room', key: 'room', width: 9 },
     { header: 'Person', key: 'person', width: 14 },
@@ -240,7 +265,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       if (!person || person.employment === 'guest') continue;
       const c = credit(s, st);
       cx.addRow({
-        date: dateCell(s.start), start: timeCell(s.start), end: timeCell(s.end), hours: round2(hoursOf(s)),
+        date: dateCell(s.start), start: timeCell(s.start), end: timeCell(s.end), timeslot: timeslot(s), hours: round2(hoursOf(s)),
         room: rooms.get(s.roomId)?.code, person: person.nickname, role: st.role.toUpperCase(),
         reason: cancelReasonText(s),
         leave: c.leaveId ? leaveInfo.get(c.leaveId) ?? '' : '',
@@ -278,6 +303,55 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
   if (byPerson.size === 0) ul.addRow({ nickname: 'No urgent leave this month' });
 
   return wb;
+}
+
+interface Clock {
+  in: Date;
+  out: Date | null;
+  status: 'ok' | 'pending' | 'approved' | 'rejected';
+  offsiteReason: string | null;
+  adjustedHours: number | null;
+  corrected: boolean;
+}
+
+/** Each person's clock record per session, keyed "sessionId:personId". */
+async function clockBySession(db: Db, sessionIds: number[]): Promise<Map<string, Clock>> {
+  const { rows } = await db.query(
+    `SELECT session_id::int, person_id::int, clock_in_at, clock_out_at, status, offsite_reason, adjusted_hours, correction_id
+       FROM attendance WHERE session_id = ANY($1)`,
+    [sessionIds],
+  );
+  return new Map(
+    rows.map((r) => [
+      `${r.session_id}:${r.person_id}`,
+      {
+        in: new Date(r.clock_in_at),
+        out: r.clock_out_at ? new Date(r.clock_out_at) : null,
+        status: r.status,
+        offsiteReason: r.offsite_reason,
+        adjustedHours: r.adjusted_hours === null ? null : Number(r.adjusted_hours),
+        corrected: r.correction_id !== null,
+      },
+    ]),
+  );
+}
+
+/** Actual clock-in/out times (date added when not the session's date) and what is unusual about them. */
+function clockCells(s: { start: Date; end: Date; status: string }, c: Clock | undefined, replaced: boolean, now: Date) {
+  const at = (d: Date) => (dateCell(d) === dateCell(s.start) ? timeCell(d) : `${dateCell(d)} ${timeCell(d)}`);
+  if (!c) {
+    const missed = s.status === 'published' && !replaced && s.end < now;
+    return { clockNote: missed ? 'No clock-in' : undefined };
+  }
+  const notes: string[] = [];
+  if (c.offsiteReason) {
+    const st = c.status === 'pending' ? 'waiting for admin' : c.status === 'rejected' ? 'rejected' : 'approved';
+    notes.push(`Off-site (${st}): ${c.offsiteReason}`);
+  }
+  if (!c.out) notes.push(s.end < now ? 'Forgot to clock out' : 'Still clocked in');
+  if (c.corrected) notes.push('Time corrected');
+  if (c.adjustedHours !== null) notes.push(`Hours set by admin: ${c.adjustedHours}`);
+  return { clockIn: at(c.in), clockOut: c.out ? at(c.out) : undefined, clockNote: notes.join('; ') || undefined };
 }
 
 const REASON_LABEL: Record<string, string> = {
