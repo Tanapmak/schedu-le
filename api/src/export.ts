@@ -19,6 +19,7 @@ const bkk = (d: Date) => new Date(d.getTime() + 7 * 3_600_000);
 const dateCell = (d: Date) => bkk(d).toISOString().slice(0, 10);
 const timeCell = (d: Date) => bkk(d).toISOString().slice(11, 16);
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const timeslot = (s: { start: Date; end: Date }) => `${timeCell(s.start)} - ${timeCell(s.end)}`;
 
 function header(ws: ExcelJS.Worksheet, columns: { header: string; key: string; width: number; numFmt?: string }[]) {
   ws.columns = columns.map(({ numFmt, ...c }) => ({ ...c, style: numFmt ? { numFmt } : {} }));
@@ -56,6 +57,14 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       .map((st) => ({ s, st, person: people.get(st.personId)!, room: rooms.get(s.roomId)!, result: results.get(s.id) }))
       .filter((l) => l.person && l.person.employment !== 'guest'),
   );
+  // The Sessions sheet lists everyone on every live or cancelled session, with the hours each
+  // one earned, so payroll can be checked on one sheet (cancelled and replaced lines earn 0 or wait).
+  const sheetLines = sessions
+    .filter((s) => s.status === 'published' || s.status === 'cancelled')
+    .flatMap((s) =>
+      s.staff.map((st) => ({ s, st, person: people.get(st.personId)!, room: rooms.get(s.roomId)!, result: results.get(s.id) })),
+    )
+    .filter((l) => l.person && l.person.employment !== 'guest');
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Schedu-le';
@@ -125,6 +134,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Date', key: 'date', width: 12 },
     { header: 'Start', key: 'start', width: 8 },
     { header: 'End', key: 'end', width: 8 },
+    { header: 'Timeslot', key: 'timeslot', width: 14 },
     { header: 'Hours', key: 'hours', width: 8, numFmt: '0.0' },
     { header: 'Room', key: 'room', width: 9 },
     { header: 'Person', key: 'person', width: 14 },
@@ -134,7 +144,8 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'With', key: 'with', width: 18 },
     { header: 'Status', key: 'status', width: 11 },
     { header: 'Cancel reason', key: 'reason', width: 20 },
-    { header: 'Hours credit', key: 'credit', width: 34 },
+    { header: 'Hours credit', key: 'credit', width: 50 },
+    { header: 'Hours earned', key: 'earned', width: 13, numFmt: '0.0' },
     { header: 'GMV (screen)', key: 'gmv', width: 14, numFmt: '#,##0' },
     { header: 'Orders', key: 'orders', width: 9 },
     { header: 'Result', key: 'result', width: 11 },
@@ -142,32 +153,39 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Deduction status', key: 'deductionStatus', width: 26 },
     { header: 'Session ID', key: 'id', width: 10 },
   ];
-  const detailRow = (l: (typeof lines)[number]) => ({
-    date: dateCell(l.s.start),
-    start: timeCell(l.s.start),
-    end: timeCell(l.s.end),
-    hours: round2(hoursOf(l.s)),
-    room: l.room.code,
-    person: l.person.nickname,
-    position: l.person.position.toUpperCase(),
-    employment: l.person.employment,
-    role: l.st.role.toUpperCase(),
-    with: l.s.staff.filter((x) => x.personId !== l.st.personId && !x.replaced).map((x) => people.get(x.personId)?.nickname).join(', '),
-    status: l.s.status,
-    reason: cancelReasonText(l.s),
-    credit: l.s.status === 'cancelled' ? creditText(credit(l.s, l.st), l.st.creditNote) : '',
-    gmv: l.result ? round2(l.result.gmv) : undefined,
-    orders: l.result?.orders,
-    result: liveOf.get(l.s.id)?.status ?? '',
-    // On the PD's line only. Charged once results close; until then it is what is at stake.
-    ...(charged(l.s.id, l.st.personId)
-      ? { deduction: FORGOT_RECORD_DEDUCTION, deductionStatus: deductionStatus(liveOf.get(l.s.id)!.fined) }
-      : {}),
-    id: l.s.id,
-  });
+  const detailRow = (l: (typeof lines)[number]) => {
+    const c = credit(l.s, l.st);
+    return {
+      date: dateCell(l.s.start),
+      start: timeCell(l.s.start),
+      end: timeCell(l.s.end),
+      timeslot: timeslot(l.s),
+      hours: round2(hoursOf(l.s)),
+      room: l.room.code,
+      person: l.person.nickname,
+      position: l.person.position.toUpperCase(),
+      employment: l.person.employment,
+      role: l.st.role.toUpperCase(),
+      with: l.s.staff.filter((x) => x.personId !== l.st.personId && !x.replaced).map((x) => people.get(x.personId)?.nickname).join(', '),
+      status: l.s.status,
+      reason: cancelReasonText(l.s),
+      credit: creditText(c, l.st.creditNote),
+      // A number, so the column sums; "Pending" (ignored by SUM) until the hours are decided.
+      earned: c.status === 'credited' ? round2(hoursOf(l.s)) : c.status === 'pending' ? 'Pending' : 0,
+      // Results stay off lines that earn no commission (replaced people, cancelled sessions).
+      gmv: l.result && c.status === 'credited' ? round2(l.result.gmv) : undefined,
+      orders: c.status === 'credited' ? l.result?.orders : undefined,
+      result: liveOf.get(l.s.id)?.status ?? '',
+      // On the PD's line only. Charged once results close; until then it is what is at stake.
+      ...(charged(l.s.id, l.st.personId)
+        ? { deduction: FORGOT_RECORD_DEDUCTION, deductionStatus: deductionStatus(liveOf.get(l.s.id)!.fined) }
+        : {}),
+      id: l.s.id,
+    };
+  };
   const detail = wb.addWorksheet('Sessions');
   header(detail, detailColumns);
-  for (const l of lines) detail.addRow(detailRow(l));
+  for (const l of sheetLines) detail.addRow(detailRow(l));
 
   // ---- Freelance: each freelancer's lives with a total, for accounting.
   const fl = wb.addWorksheet('Freelance', { properties: { tabColor: { argb: BLACK } } });
@@ -179,6 +197,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     const total = fl.addRow({
       date: `Total ${people.get(id)!.nickname}`,
       hours: round2(mine.reduce((a, l) => a + hoursOf(l.s), 0)),
+      earned: round2(mine.reduce((a, l) => a + hoursOf(l.s), 0)),
       room: `${mine.length} lives`,
       gmv: round2(mine.reduce((a, l) => a + (l.result?.gmv ?? 0), 0)),
     });
@@ -222,6 +241,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
     { header: 'Date', key: 'date', width: 12 },
     { header: 'Start', key: 'start', width: 8 },
     { header: 'End', key: 'end', width: 8 },
+    { header: 'Timeslot', key: 'timeslot', width: 14 },
     { header: 'Hours', key: 'hours', width: 8, numFmt: '0.0' },
     { header: 'Room', key: 'room', width: 9 },
     { header: 'Person', key: 'person', width: 14 },
@@ -240,7 +260,7 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
       if (!person || person.employment === 'guest') continue;
       const c = credit(s, st);
       cx.addRow({
-        date: dateCell(s.start), start: timeCell(s.start), end: timeCell(s.end), hours: round2(hoursOf(s)),
+        date: dateCell(s.start), start: timeCell(s.start), end: timeCell(s.end), timeslot: timeslot(s), hours: round2(hoursOf(s)),
         room: rooms.get(s.roomId)?.code, person: person.nickname, role: st.role.toUpperCase(),
         reason: cancelReasonText(s),
         leave: c.leaveId ? leaveInfo.get(c.leaveId) ?? '' : '',
