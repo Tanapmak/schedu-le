@@ -1,9 +1,31 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api, CANCEL_REASONS, type CancelReason, type CreditChoice, type Person, type Room, type Session, type SessionInput } from './api';
+import { api, CANCEL_REASONS, type CancelReason, type CreditChoice, type OffsitePlace, type Person, type Room, type Session, type SessionInput, type SessionLocation } from './api';
 import { cancelKey, CreditPanel } from './LeaveExtras';
 import { t, violationMessage, type Lang, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay, liveDate, liveInstant } from './time';
-import { useBackdropClose } from './ui';
+import { mapsLink, useBackdropClose } from './ui';
+
+/**
+ * Reads coordinates from what people paste: "13.7466, 100.5393", or a Google Maps link
+ * (…/@13.7466,100.5393,17z, …?q=13.7466,100.5393, …!3d13.7466!4d100.5393).
+ */
+export function parseCoords(text: string): { lat: number; lng: number } | null {
+  const num = '(-?\\d{1,3}(?:\\.\\d+)?)';
+  const patterns = [
+    new RegExp(`!3d${num}!4d${num}`),
+    new RegExp(`@${num},${num}`),
+    new RegExp(`[?&](?:q|query|ll|destination)=${num},\\s*${num}`),
+    new RegExp(`^\\s*${num}\\s*[,\\s]\\s*${num}\\s*$`),
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (!m) continue;
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng };
+  }
+  return null;
+}
 
 export type FormTarget =
   | { mode: 'new'; roomId?: number; date: string; start: string; end: string }
@@ -29,6 +51,26 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
   const [mc, setMc] = useState(firstStaff('mc'));
   const [pd, setPd] = useState(firstStaff('pd'));
   const [note, setNote] = useState(editing?.note ?? '');
+  // Where the live happens. Studio is the default (the studio area set on the Clock in page).
+  const [location, setLocation] = useState<SessionLocation>((editing?.location as SessionLocation) ?? 'studio');
+  const [placeName, setPlaceName] = useState(editing?.offsite?.name ?? '');
+  const [coordsText, setCoordsText] = useState(editing?.offsite ? `${editing.offsite.lat}, ${editing.offsite.lng}` : '');
+  const [radius, setRadius] = useState(String(editing?.offsite?.radiusM ?? 300));
+  const [locating, setLocating] = useState(false);
+  const coords = parseCoords(coordsText);
+  const radiusM = Number(radius);
+  const offsite: OffsitePlace | null =
+    location === 'offsite' && placeName.trim() && coords && radiusM >= 20 && radiusM <= 5000 ? { name: placeName.trim(), ...coords, radiusM } : null;
+  const placeOk = location !== 'offsite' || offsite !== null;
+
+  function useHere() {
+    setLocating(true);
+    navigator.geolocation?.getCurrentPosition(
+      (p) => (setCoordsText(`${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`), setLocating(false)),
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 20_000 },
+    );
+  }
   const [violations, setViolations] = useState<ViolationLike[]>([]);
   const [needsConfirm, setNeedsConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -66,6 +108,8 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
     ];
     return { roomId, start: s.toISOString(), end: e.toISOString(), note, staff };
   }, [roomId, date, start, end, mc, pd, note, needsPd]);
+  // The place is not part of the rule check, so typing it doesn't re-run the checks.
+  const placeInput = { location, offsite: location === 'offsite' ? offsite : null };
 
   // Check as the admin types, so clashes show before pressing save.
   useEffect(() => {
@@ -83,7 +127,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
     if (!input) return;
     setBusy(true);
     try {
-      const res = await api.save(input, { id: editing?.id, confirm: needsConfirm });
+      const res = await api.save({ ...input, ...placeInput }, { id: editing?.id, confirm: needsConfirm });
       if (res.ok) return onSaved(res.id);
       setViolations(res.violations);
       setNeedsConfirm(res.violations.every((v) => v.severity === 'warning'));
@@ -177,6 +221,49 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
             <p className="hint">{t(lang, 'contentNoPd')}</p>
           )}
           <label className="wide">
+            {t(lang, 'liveLocation')}
+            <select value={location} onChange={(e) => setLocation(e.target.value as SessionLocation)}>
+              <option value="studio">{t(lang, 'locStudio')}</option>
+              <option value="offsite">{t(lang, 'locOffsite')}</option>
+              {location === 'home' && <option value="home">{t(lang, 'locHome')}</option>}
+            </select>
+          </label>
+          {location === 'offsite' && (
+            <div className="wide offsite-fields">
+              <label>
+                {t(lang, 'placeName')} *
+                <input value={placeName} placeholder={t(lang, 'placeNamePh')} maxLength={120} onChange={(e) => setPlaceName(e.target.value)} />
+              </label>
+              <label>
+                {t(lang, 'placeCoords')} *
+                <input value={coordsText} placeholder={t(lang, 'placeCoordsPh')} onChange={(e) => setCoordsText(e.target.value)} />
+              </label>
+              {coordsText.trim() && !coords && <p className="error-text">{t(lang, 'placeCoordsBad')}</p>}
+              <div className="offsite-row">
+                <button type="button" disabled={locating} onClick={useHere}>
+                  {locating ? '…' : `📍 ${t(lang, 'placeUseHere')}`}
+                </button>
+                <label>
+                  {t(lang, 'placeRadius')}
+                  <input inputMode="numeric" value={radius} onChange={(e) => setRadius(e.target.value.replace(/\D/g, ''))} />
+                </label>
+              </div>
+              {coords && (
+                <div className="offsite-map">
+                  <iframe
+                    title={t(lang, 'placeCheck')}
+                    loading="lazy"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${coords.lng - 0.006},${coords.lat - 0.004},${coords.lng + 0.006},${coords.lat + 0.004}&layer=mapnik&marker=${coords.lat},${coords.lng}`}
+                  />
+                  <a href={mapsLink(coords)} target="_blank" rel="noreferrer">
+                    {t(lang, 'placeCheck')} (Google Maps) ↗
+                  </a>
+                </div>
+              )}
+              <p className="hint">{t(lang, 'placeHint')}</p>
+            </div>
+          )}
+          <label className="wide">
             {t(lang, 'note')}
             <input value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
@@ -245,7 +332,7 @@ export function SessionForm({ lang, rooms, people, target, onClose, onSaved }: P
 
         <footer>
           <button onClick={onClose}>{t(lang, 'close')}</button>
-          <button className="primary" disabled={busy || !input || errors.length > 0} onClick={save}>
+          <button className="primary" disabled={busy || !input || !placeOk || errors.length > 0} onClick={save}>
             {t(lang, needsConfirm ? 'saveAnyway' : editing ? 'saveChanges' : 'save')}
           </button>
         </footer>

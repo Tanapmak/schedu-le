@@ -64,6 +64,16 @@ export interface LeaveDocument {
   uploadedBy: string | null;
 }
 
+/** Where an off-site live happens; clock in/out checks this place instead of the studio. */
+export interface OffsitePlace {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
+export type SessionLocation = 'studio' | 'offsite' | 'home';
+
 export interface Session {
   id: number;
   roomId: number;
@@ -71,6 +81,7 @@ export interface Session {
   end: string;
   status: 'draft' | 'published' | 'cancelled';
   location: string;
+  offsite?: OffsitePlace | null;
   note: string | null;
   cancelReason: string | null;
   cancelReasonCode?: CancelReason | null;
@@ -104,6 +115,9 @@ export interface SessionInput {
   roomId: number;
   start: string;
   end: string;
+  /** Left out: the session keeps its place (new ones are at the studio). */
+  location?: SessionLocation;
+  offsite?: OffsitePlace | null;
   note?: string | null;
   staff: { personId: number; role: 'mc' | 'pd'; replaced?: boolean }[];
 }
@@ -397,14 +411,14 @@ export interface CorrectableSession {
   roomId: number;
   start: string;
   end: string;
-  location: 'studio' | 'offsite' | 'home';
-  offsite: { lat: number; lng: number } | null;
+  location: SessionLocation;
+  offsite: OffsitePlace | null;
   attendance: { clockInAt: string; clockOutAt: string | null } | null;
   pendingCorrectionId: number | null;
 }
 
 export interface MyAttendance {
-  session: { id: number; roomId: number; start: string; end: string; role: StaffRole; location: 'studio' | 'offsite' | 'home'; offsite: { lat: number; lng: number } | null } | null;
+  session: { id: number; roomId: number; start: string; end: string; role: StaffRole; location: SessionLocation; offsite: OffsitePlace | null } | null;
   opensAt: string | null;
   windowMinutes: number;
   open: Attendance | null;

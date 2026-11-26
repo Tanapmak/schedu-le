@@ -1,10 +1,10 @@
 import type pg from 'pg';
-import { checkArea, listStudios, type Fix } from './attendance.js';
-import type { Db } from './store.js';
+import { checkArea, listStudios, offsiteOf, type Fix } from './attendance.js';
+import type { Db, OffsitePlace } from './store.js';
 
 /**
  * Time corrections: someone forgot to clock in or out. They ask for the right times from the
- * session's place (studio area, or the offsite spot), and an admin or operation approves.
+ * main studio area (even for off-site sessions), and an admin or operation approves.
  * Approving writes the times into the attendance record.
  */
 
@@ -81,7 +81,7 @@ export interface CorrectableSession {
   start: string;
   end: string;
   location: 'studio' | 'offsite' | 'home';
-  offsite: { lat: number; lng: number } | null;
+  offsite: OffsitePlace | null;
   attendance: { clockInAt: string; clockOutAt: string | null } | null;
   pendingCorrectionId: number | null;
 }
@@ -90,7 +90,7 @@ export interface CorrectableSession {
 export async function correctableSessions(db: Db, personId: number, now: Date): Promise<CorrectableSession[]> {
   const { rows } = await db.query(
     `SELECT s.id::int, s.room_id::int, lower(s.period) AS start, upper(s.period) AS "end", s.location::text AS location,
-            s.offsite_lat, s.offsite_lng, a.clock_in_at, a.clock_out_at, c.id::int AS pending_id
+            s.offsite_name, s.offsite_lat, s.offsite_lng, s.offsite_radius_m, a.clock_in_at, a.clock_out_at, c.id::int AS pending_id
        FROM sessions s
        JOIN session_staff st ON st.session_id = s.id AND st.person_id = $1 AND NOT st.replaced
        LEFT JOIN attendance a ON a.session_id = s.id AND a.person_id = $1
@@ -105,7 +105,7 @@ export async function correctableSessions(db: Db, personId: number, now: Date): 
     start: iso(r.start)!,
     end: iso(r.end)!,
     location: r.location,
-    offsite: r.offsite_lat === null ? null : { lat: r.offsite_lat, lng: r.offsite_lng },
+    offsite: offsiteOf(r),
     attendance: r.clock_in_at ? { clockInAt: iso(r.clock_in_at)!, clockOutAt: iso(r.clock_out_at) } : null,
     pendingCorrectionId: r.pending_id ?? null,
   }));
@@ -125,8 +125,9 @@ export async function requestCorrection(db: Db, personId: number, input: Correct
   if (!session) return { ok: false, status: 404, error: 'session_not_correctable' };
   if (session.pendingCorrectionId) return { ok: false, status: 409, error: 'already_pending' };
 
-  // Only from the session's place, like clocking in: the person has to actually be at the studio.
-  const area = checkArea(session, await listStudios(db), at);
+  // Only from the main studio, whatever place the session was set to (Bright, 2026-11-26):
+  // corrections are made at the office, not at an off-site live.
+  const area = checkArea({ location: 'studio', offsite: null }, await listStudios(db), at);
   if (!area.inArea) return { ok: false, status: 422, error: at ? 'out_of_area' : 'location_needed' };
 
   const cur = session.attendance;

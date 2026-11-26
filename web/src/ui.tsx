@@ -1,5 +1,5 @@
 import { useRef, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
-import type { Person, RequestStatus, Room, SessionRef } from './api';
+import type { OffsitePlace, Person, RequestStatus, Room, SessionRef } from './api';
 import { t, violationMessage, type Lang, type StringKey, type ViolationLike } from './i18n';
 import { bkkDate, bkkTime, formatDay } from './time';
 
@@ -107,5 +107,26 @@ export function Tabs<K extends string>({
         </button>
       ))}
     </div>
+  );
+}
+
+export const mapsLink = (p: { lat: number; lng: number }) => `https://www.google.com/maps?q=${p.lat},${p.lng}`;
+
+/** "📍 Off-site: <place> · Open map" under a session that isn't at the studio; nothing otherwise. */
+export function OffsiteLine({ lang, session }: { lang: Lang; session: { location: string; offsite?: OffsitePlace | null } }) {
+  if (session.location !== 'offsite') return null;
+  const o = session.offsite;
+  return (
+    <small className="offsite-line">
+      📍 {t(lang, 'offsiteBadge')}: {o?.name || '—'}
+      {o && (
+        <>
+          {' · '}
+          <a href={mapsLink(o)} target="_blank" rel="noreferrer">
+            {t(lang, 'openMap')}
+          </a>
+        </>
+      )}
+    </small>
   );
 }

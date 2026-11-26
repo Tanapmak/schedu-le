@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type CorrectableSession, type MyAttendance, type Room, type Studio } from './api';
 import { t, type Lang, type StringKey } from './i18n';
 import { bkkDate, bkkTime, formatDay, liveDate, liveInstant } from './time';
-import { Modal, StatusPill } from './ui';
+import { mapsLink, Modal, StatusPill } from './ui';
 
 type Fix = { lat: number; lng: number; accuracy: number };
 
@@ -13,10 +13,13 @@ function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: numbe
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/** Places a session may be clocked in from: the offsite spot, or any studio. */
+/** Places a session may be clocked in from: the session's own off-site place (overrides the studio), or any studio. */
 function placesFor(session: Pick<CorrectableSession, 'location' | 'offsite'> | null, studios: Studio[]): Studio[] {
-  return session?.location === 'offsite' && session.offsite ? [{ id: 0, name: 'offsite', ...session.offsite, radiusM: 300 }] : studios;
+  return session?.location === 'offsite' && session.offsite ? [{ id: 0, ...session.offsite, name: session.offsite.name || 'offsite' }] : studios;
 }
+
+/** Time corrections are only made at the main studio, whatever place the session was set to. */
+const STUDIO_ONLY = { location: 'studio', offsite: null } as const;
 
 /** In the area (or nothing to check), and how far the nearest place is. */
 function areaOf(session: Pick<CorrectableSession, 'location' | 'offsite'> | null, studios: Studio[], fix: Fix | undefined) {
@@ -59,6 +62,7 @@ export function ClockIn({ lang, rooms }: { lang: Lang; rooms: Room[] }) {
   const session = me?.session ?? null;
   const open = me?.open ?? null;
   const { places, noCheck, nearest, inArea } = areaOf(session, me?.studios ?? [], fix);
+  const offsiteNow = session?.location === 'offsite' && Boolean(session.offsite);
   const opensAt = me?.opensAt ? new Date(me.opensAt).getTime() : null;
   const windowOpen = Boolean(session && opensAt !== null && now >= opensAt);
   const codeOf = (id: number) => rooms.find((r) => r.id === id)?.code ?? `#${id}`;
@@ -92,6 +96,14 @@ export function ClockIn({ lang, rooms }: { lang: Lang; rooms: Room[] }) {
       </p>
       <h1>{t(lang, open ? 'clockOutTitle' : 'clockInTitle')}</h1>
 
+      {session?.location === 'offsite' && session.offsite && (
+        <p className="offsite-place">
+          📍 {t(lang, 'clockOffsiteAt')}: <strong>{session.offsite.name}</strong>{' '}
+          <a href={mapsLink(session.offsite)} target="_blank" rel="noreferrer">
+            {t(lang, 'openMap')}
+          </a>
+        </p>
+      )}
       {!noCheck && <GeoMap places={places} fix={fix} />}
 
       <ul className="clock-checks">
@@ -102,9 +114,9 @@ export function ClockIn({ lang, rooms }: { lang: Lang; rooms: Room[] }) {
         ) : !fix ? (
           <li className="muted">… {t(lang, 'clockLocating')}</li>
         ) : inArea ? (
-          <li className="ok">✓ {t(lang, 'clockInArea').replace('{d}', fmtDistance(nearest!))}</li>
+          <li className="ok">✓ {t(lang, offsiteNow ? 'clockInOffsiteArea' : 'clockInArea').replace('{d}', fmtDistance(nearest!))}</li>
         ) : (
-          <li className="bad">✕ {t(lang, 'clockOutArea').replace('{d}', fmtDistance(nearest!))}</li>
+          <li className="bad">✕ {t(lang, offsiteNow ? 'clockOutOffsiteArea' : 'clockOutArea').replace('{d}', fmtDistance(nearest!))}</li>
         )}
         {session ? (
           <li className={windowOpen || open ? 'ok' : 'muted'}>
@@ -316,7 +328,7 @@ function CorrectionForm({
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const area = areaOf(s, studios, fix);
+  const area = areaOf(STUDIO_ONLY, studios, fix);
 
   // Times typed on the session's live day: 00:00-05:59 means the morning after.
   const inAt = inTime ? liveInstant(day, inTime) : null;
@@ -380,7 +392,7 @@ function CorrectionForm({
       {badOrder && <p className="error">{t(lang, 'corrErr_out_before_in')}</p>}
       <ul className="clock-checks">
         {area.noCheck ? (
-          <li className="ok">✓ {t(lang, s.location === 'home' ? 'clockHome' : 'clockNoStudio')}</li>
+          <li className="ok">✓ {t(lang, 'clockNoStudio')}</li>
         ) : geoError ? (
           <li className="bad">✕ {t(lang, 'clockNoGps')}</li>
         ) : !fix ? (

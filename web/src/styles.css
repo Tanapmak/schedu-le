@@ -746,3 +746,14 @@ fieldset.form-grid.plain { border: 0; padding: 0; margin: 12px 0 0; min-width: 0
 /* Next content shoot: same card as the next live, in black so the two never get mixed up */
 .next-live.next-shoot { background: var(--ink); cursor: pointer; }
 .next-shoot .shoot-title { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Off-site lives: place fields in the session form, a pin line on chips and cards. */
+.chip .offsite-flag { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.offsite-fields { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px dashed var(--line, #ccc); border-radius: 10px; }
+.offsite-fields label { display: flex; flex-direction: column; gap: 4px; }
+.offsite-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+.offsite-row label { flex: 1 1 140px; }
+.offsite-map { display: flex; flex-direction: column; gap: 4px; }
+.offsite-map iframe { width: 100%; height: 180px; border: 0; border-radius: 8px; }
+.offsite-line { display: block; font-size: 12px; }
+.offsite-place { margin: 0 0 8px; }

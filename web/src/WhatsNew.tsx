@@ -3,10 +3,10 @@ import type { Lang } from './i18n';
 import { Modal } from './ui';
 
 /**
- * "What changed" box: shown once to everyone after an update, and again from the Leave page.
- * Bump UPDATE_ID for the next update so people see it again.
+ * "What changed" boxes. The latest update opens once for everyone the first time they open the
+ * app after it (LATEST below); the leave rules box also opens from the Leave page.
+ * For the next update: add one more Update and point LATEST at it, with a new id.
  */
-const UPDATE_ID = '2026-11-leave-hours';
 const SEEN_KEY = 'whatsNewSeen';
 
 type Text = Record<Lang, string>;
@@ -17,6 +17,13 @@ interface Item {
   examples?: Record<Lang, string[]>;
   /** Only admin / operation see it. */
   managers?: boolean;
+}
+
+interface Update {
+  id: string;
+  heading: Text;
+  intro: Text;
+  items: Item[];
 }
 
 const heading: Text = {
@@ -95,12 +102,72 @@ const items: Item[] = [
   },
 ];
 
+/** Leave & hours rules (2026-11, PR #21); also the "rules" link on the Leave page. */
+export const leaveRules: Update = { id: '2026-11-leave-hours', heading, intro, items };
+
+/** Off-site lives (2026-11-26). */
+const offsiteLives: Update = {
+  id: '2026-11-offsite-lives',
+  heading: { th: 'อัปเดตระบบ: ไลฟ์นอกสถานที่', en: 'Update: off-site lives', zh: '系统更新：外景直播' },
+  intro: {
+    th: 'คิวไลฟ์แต่ละคิวตั้งสถานที่ได้แล้ว ปกติคือสตูดิโอเหมือนเดิม ถ้าคิวไหนไปไลฟ์ที่อื่น ระบบจะเช็ก clock in / clock out กับสถานที่ของคิวนั้นแทน',
+    en: 'Each live session now has a place. It is the studio as before; when a session is somewhere else, clock in / clock out checks that place instead.',
+    zh: '每个直播场次现在都可以设置地点。默认仍是工作室；若某场在别处直播，打卡将以该场地点为准。',
+  },
+  items: [
+    {
+      title: { th: 'ดูว่าคิวไหนไลฟ์นอกสถานที่', en: 'See which sessions are off-site', zh: '查看哪些场次是外景' },
+      body: {
+        th: 'คิวที่ไลฟ์นอกสถานที่จะมี 📍 ชื่อสถานที่ ในตารางไลฟ์และหน้าตารางของฉัน กด "เปิดแผนที่" เพื่อดูทางไปได้',
+        en: 'Off-site sessions show 📍 and the place name on the schedule and on My schedule. Tap "Open map" for directions.',
+        zh: '外景场次在排班表和“我的排班”中显示 📍 和地点名称，点“打开地图”查看路线。',
+      },
+    },
+    {
+      title: { th: 'Clock in / out ที่สถานที่ไลฟ์', en: 'Clock in / out at the live place', zh: '在直播地点打卡' },
+      body: {
+        th: 'ไปถึงสถานที่ของคิวนั้นแล้วกด clock in ได้เลย อยู่ในรัศมีที่ตั้งไว้ไม่ต้องขออนุมัติลงเวลานอกพื้นที่ และไม่ต้องไปที่สตูดิโอ',
+        en: 'At the session\'s place, just clock in. Inside its radius there is no out-of-area approval, and you don\'t need to be at the studio.',
+        zh: '到达该场地点后直接打卡。在设定范围内无需申请范围外打卡，也不必在工作室。',
+      },
+      examples: {
+        th: [
+          '✅ คิว 14:00 ไลฟ์ที่ Central World → clock in ที่ Central World ได้ปกติ',
+          '❌ คิวนั้นไลฟ์นอกสถานที่ แต่ไป clock in ที่สตูดิโอ → นอกพื้นที่ ต้องใส่เหตุผลและรอแอดมินอนุมัติ',
+          '🏢 ขอแก้เวลา (ลืม clock in/out) ยังต้องทำที่สตูดิโอเท่านั้น แม้คิวนั้นจะไลฟ์นอกสถานที่',
+        ],
+        en: [
+          '✅ 14:00 session at Central World → clock in at Central World as normal',
+          '❌ The session is off-site but you clock in at the studio → out of area: give a reason and wait for admin',
+          '🏢 Time corrections (forgot to clock in/out) are still made at the studio only, even for off-site sessions',
+        ],
+        zh: [
+          '✅ 14:00场在 Central World → 在 Central World 正常打卡',
+          '❌ 该场为外景，却在工作室打卡 → 范围外，需填写原因并等待管理员批准',
+          '🏢 更正时间（忘记打卡）仍只能在工作室提交，即使该场是外景',
+        ],
+      },
+    },
+    {
+      title: { th: 'สำหรับ operation / admin', en: 'For operation / admin', zh: '运营/管理员' },
+      managers: true,
+      body: {
+        th: 'ตอนสร้างหรือแก้ไขคิว เลือก "สถานที่ไลฟ์" เป็นสตูดิโอ (ค่าเริ่มต้น) หรือนอกสถานที่ แล้วใส่ชื่อสถานที่ พิกัด (วางพิกัดหรือลิงก์ Google Maps หรือกด "ใช้ตำแหน่งปัจจุบันของฉัน") และรัศมี payroll Excel แท็บ Sessions มีคอลัมน์ Location เพิ่ม',
+        en: 'When creating or editing a session, set "Live location" to Studio (default) or Off-site, then enter the place name, coordinates (paste numbers or a Google Maps link, or "Use my current location") and the radius. The payroll Excel Sessions sheet has a new Location column.',
+        zh: '新建或编辑场次时，将“直播地点”设为工作室（默认）或外景，并填写地点名称、坐标（粘贴坐标或 Google 地图链接，或“使用我当前的位置”）和范围。薪资Excel的 Sessions 表新增 Location 列。',
+      },
+    },
+  ],
+};
+
+const LATEST = offsiteLives;
+
 const gotIt: Text = { th: 'เข้าใจแล้ว', en: 'Got it', zh: '知道了' };
 export const rulesLink: Text = { th: 'กฎลา & ชั่วโมง', en: 'Leave & hours rules', zh: '请假与工时规则' };
 
 function seen(): boolean {
   try {
-    return localStorage.getItem(SEEN_KEY) === UPDATE_ID;
+    return localStorage.getItem(SEEN_KEY) === LATEST.id;
   } catch {
     return true; // storage blocked: don't nag on every page load
   }
@@ -108,14 +175,15 @@ function seen(): boolean {
 
 function markSeen() {
   try {
-    localStorage.setItem(SEEN_KEY, UPDATE_ID);
+    localStorage.setItem(SEEN_KEY, LATEST.id);
   } catch {
     // ignore
   }
 }
 
-export function WhatsNewBox({ lang, manager, onClose }: { lang: Lang; manager: boolean; onClose: () => void }) {
-  const close = () => (markSeen(), onClose());
+export function WhatsNewBox({ lang, manager, onClose, update = leaveRules }: { lang: Lang; manager: boolean; onClose: () => void; update?: Update }) {
+  const { heading, intro, items } = update;
+  const close = () => (update.id === LATEST.id && markSeen(), onClose());
   return (
     <Modal
       title={heading[lang]}
@@ -154,5 +222,5 @@ export function WhatsNewBox({ lang, manager, onClose }: { lang: Lang; manager: b
 export function WhatsNewOnce({ lang, manager }: { lang: Lang; manager: boolean }) {
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(!seen()), []);
-  return open ? <WhatsNewBox lang={lang} manager={manager} onClose={() => setOpen(false)} /> : null;
+  return open ? <WhatsNewBox lang={lang} manager={manager} update={LATEST} onClose={() => setOpen(false)} /> : null;
 }

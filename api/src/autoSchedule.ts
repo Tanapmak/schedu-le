@@ -193,6 +193,7 @@ export interface Slot extends Interval {
   roomId: number;
   needsPd: boolean;
   location: SessionInput['location'];
+  offsite?: SessionInput['offsite'];
   note: string | null;
   /** Who did this slot in the pattern week; a small nudge towards keeping the usual crew. */
   usual: { mc?: number; pd?: number };
@@ -437,6 +438,7 @@ export async function planSchedule(
         end: r.input.end,
         needsPd: room.roomType === 'live' && room.requiresPd,
         location: r.input.location,
+        offsite: r.input.offsite,
         note: r.input.note ?? null,
         usual,
       },
@@ -501,7 +503,7 @@ export async function planSchedule(
       return {
         row: a.slot.row,
         problems: a.problems,
-        input: { roomId: a.slot.roomId, start: a.slot.start, end: a.slot.end, location: a.slot.location, note: a.slot.note, staff },
+        input: { roomId: a.slot.roomId, start: a.slot.start, end: a.slot.end, location: a.slot.location, offsite: a.slot.offsite, note: a.slot.note, staff },
       };
     }),
     ...taken.map((s): BulkRow => ({ row: s.row, problems: ['room_taken'], input: { roomId: s.roomId, start: s.start, end: s.end, staff: [] } })),

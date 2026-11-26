@@ -120,6 +120,7 @@ export async function copyRows(
           start: new Date(new Date(s.start).getTime() + shift),
           end: new Date(new Date(s.end).getTime() + shift),
           location: s.location as SessionInput['location'],
+          offsite: s.offsite,
           note: s.note,
           staff: s.staff.filter((x) => !x.replaced).map((x) => ({ personId: x.personId, role: x.role })),
         },
