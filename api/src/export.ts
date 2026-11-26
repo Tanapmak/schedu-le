@@ -4,7 +4,6 @@ import { creditResolver } from './credit.js';
 import { hoursOf, LEAVE_REASONS, type Credit } from './rules/index.js';
 import { FORGOT_RECORD_DEDUCTION, resultsBySession } from './results.js';
 import { monthSummary } from './liveSummary.js';
-import { performanceReport, type PerfRow } from './performanceReport.js';
 import { monthRange } from './sessions.js';
 import { listPeople, listRooms, sessionsBetween, type Db } from './store.js';
 
@@ -20,7 +19,6 @@ const bkk = (d: Date) => new Date(d.getTime() + 7 * 3_600_000);
 const dateCell = (d: Date) => bkk(d).toISOString().slice(0, 10);
 const timeCell = (d: Date) => bkk(d).toISOString().slice(11, 16);
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const lastDayOf = (to: Date) => dateCell(new Date(to.getTime() - 1));
 const timeslot = (s: { start: Date; end: Date }) => `${timeCell(s.start)} - ${timeCell(s.end)}`;
 
 function header(ws: ExcelJS.Worksheet, columns: { header: string; key: string; width: number; numFmt?: string }[]) {
@@ -304,60 +302,62 @@ export async function payrollWorkbook(db: Db, month: string, now = new Date()): 
   }
   if (byPerson.size === 0) ul.addRow({ nickname: 'No urgent leave this month' });
 
-  // ---- Live performance: GMV per person and per room, this month and accumulated over every
-  // live the system holds (imported history + app results), with each one's best single live.
-  const perf = await performanceReport(db, from, to);
-  const pf = wb.addWorksheet('Live performance', { properties: { tabColor: { argb: RED } } });
-  const perfCols = [
-    { title: 'Name', width: 16 },
-    { title: 'Role', width: 7 },
-    { title: 'Lives (month)', width: 13, numFmt: '0' },
-    { title: 'Hours (month)', width: 13, numFmt: '0.0' },
-    { title: 'GMV (month)', width: 14, numFmt: '#,##0' },
-    { title: 'GMV/h (month)', width: 14, numFmt: '#,##0' },
-    { title: 'Lives (all)', width: 11, numFmt: '#,##0' },
-    { title: 'Hours (all)', width: 11, numFmt: '#,##0.0' },
-    { title: 'Accumulated GMV', width: 17, numFmt: '#,##0' },
-    { title: 'GMV/h (all)', width: 12, numFmt: '#,##0' },
-    { title: 'Record GMV (best live)', width: 21, numFmt: '#,##0' },
-    { title: 'Record date', width: 12 },
-    { title: 'Record time', width: 13 },
-    { title: 'Record room', width: 12 },
-    { title: 'Data since', width: 12 },
-  ];
-  pf.columns = perfCols.map((c) => ({ width: c.width, style: c.numFmt ? { numFmt: c.numFmt } : {} }));
-  pf.addRow([`Live performance up to ${lastDayOf(to)}: every live in the system (history sheet + app results). Month = ${month}. Record = best single live by GMV.`]).font = { italic: true };
-  const perfTable = (title: string, rows: PerfRow[], empty: string) => {
-    pf.addRow([]);
-    pf.addRow([title]).font = { bold: true, size: 13 };
-    const head = pf.addRow(perfCols.map((c) => c.title));
-    head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLACK } };
-    if (rows.length === 0) pf.addRow([empty]);
-    for (const r of rows) {
-      const row = pf.addRow([
-        r.name,
-        r.role?.toUpperCase() ?? '',
-        r.periodLives,
-        round2(r.periodHours),
-        round2(r.periodGmv),
-        r.periodHours ? round2(r.periodGmv / r.periodHours) : null,
-        r.lives,
-        round2(r.hours),
-        round2(r.gmv),
-        r.hours ? round2(r.gmv / r.hours) : null,
-        round2(r.best.gmv),
-        dateCell(r.best.start),
-        timeslot({ start: r.best.start, end: new Date(r.best.start.getTime() + r.best.hours * 3_600_000) }),
-        r.best.room,
-        dateCell(r.first),
-      ]);
-      if (r.role && !perf.inTeam(r.name)) row.font = { color: { argb: 'FF888888' } };
-    }
+  // ---- Live performance of the month, day by day: GMV recorded per room, and per person on each
+  // room's lives that day. Only published sessions of this month; blank GMV = nothing recorded yet.
+  const roomOrder = [...rooms.keys()];
+  const livesOfMonth = sessions
+    .filter((s) => s.status === 'published')
+    .sort((a, b) => dateCell(a.start).localeCompare(dateCell(b.start)) || roomOrder.indexOf(a.roomId) - roomOrder.indexOf(b.roomId) || a.start.getTime() - b.start.getTime());
+  const addGmv = (acc: number | null, s: { id: number }) => {
+    const r = results.get(s.id);
+    return r ? (acc ?? 0) + r.gmv : acc;
   };
-  perfTable('By person (grey = name from the history sheet, not in the team now)', perf.people, 'No lives with GMV yet');
-  perfTable('By room', perf.rooms, 'No lives with GMV yet');
-  pf.views = [{ state: 'frozen', xSplit: 1 }];
+
+  const byRoomDay = new Map<string, { date: string; room: string; lives: number; gmv: number | null }>();
+  for (const s of livesOfMonth) {
+    const key = `${dateCell(s.start)}|${s.roomId}`;
+    const row = byRoomDay.get(key) ?? { date: dateCell(s.start), room: rooms.get(s.roomId)?.code ?? `#${s.roomId}`, lives: 0, gmv: null };
+    row.lives += 1;
+    row.gmv = addGmv(row.gmv, s);
+    byRoomDay.set(key, row);
+  }
+  const pr = wb.addWorksheet('Live performance by room', { properties: { tabColor: { argb: RED } } });
+  header(pr, [
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Room', key: 'room', width: 10 },
+    { header: 'Record GMV', key: 'gmv', width: 14, numFmt: '#,##0' },
+    { header: 'Lives', key: 'lives', width: 8 },
+  ]);
+  for (const r of byRoomDay.values()) pr.addRow({ ...r, gmv: r.gmv === null ? null : round2(r.gmv) });
+  if (byRoomDay.size === 0) pr.addRow({ date: 'No lives this month' });
+
+  const byStaffDay = new Map<string, { date: string; room: string; staff: string; position: string; lives: number; gmv: number | null }>();
+  for (const s of livesOfMonth) {
+    const staff = s.staff
+      .filter((st) => !st.replaced)
+      .sort((a, b) => a.role.localeCompare(b.role) || (people.get(a.personId)?.nickname ?? '').localeCompare(people.get(b.personId)?.nickname ?? ''));
+    for (const st of staff) {
+      const key = `${dateCell(s.start)}|${s.roomId}|${st.personId}|${st.role}`;
+      const row = byStaffDay.get(key) ?? {
+        date: dateCell(s.start), room: rooms.get(s.roomId)?.code ?? `#${s.roomId}`,
+        staff: people.get(st.personId)?.nickname ?? `#${st.personId}`, position: st.role, lives: 0, gmv: null,
+      };
+      row.lives += 1;
+      row.gmv = addGmv(row.gmv, s);
+      byStaffDay.set(key, row);
+    }
+  }
+  const ps = wb.addWorksheet('Live performance by staff', { properties: { tabColor: { argb: RED } } });
+  header(ps, [
+    { header: 'Date', key: 'date', width: 12 },
+    { header: 'Room', key: 'room', width: 10 },
+    { header: 'Staff', key: 'staff', width: 16 },
+    { header: 'Position', key: 'position', width: 10 },
+    { header: 'Record GMV', key: 'gmv', width: 14, numFmt: '#,##0' },
+    { header: 'Lives', key: 'lives', width: 8 },
+  ]);
+  for (const r of byStaffDay.values()) ps.addRow({ ...r, gmv: r.gmv === null ? null : round2(r.gmv) });
+  if (byStaffDay.size === 0) ps.addRow({ date: 'No lives this month' });
 
   return wb;
 }

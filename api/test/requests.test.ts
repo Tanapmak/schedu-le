@@ -467,33 +467,26 @@ describe.skipIf(!url)('leave, swaps and off days', () => {
     const a = await published('TTS 1', '2030-04-02T10:00', '2030-04-02T12:00', 1, 8);
     await published('TTS 2', '2030-04-03T10:00', '2030-04-03T13:00', 7, 8);
     await call('POST', '/api/results', { sessionId: a, isNewBroadcast: true, capturedAt: '2030-04-02T11:55:00+07:00', metrics: { gmv: 9000 } });
-    // Imported history: a name typed differently, someone no longer in the team, and a live after the month.
-    await pool.query(
-      `INSERT INTO performance_history (room_code, started_at, hours, mc, pd, gmv) VALUES
-         ('TTS 1', '2030-03-01T10:00+07', 2, '{"mc a"}', '{}', 4000),
-         ('TTS 1', '2029-12-01T20:00+07', 3, '{"Old MC"}', '{}', 20000),
-         ('TTS 1', '2030-05-01T10:00+07', 2, '{"MC A"}', '{}', 99999)`,
-    );
 
     expect((await fetch(`${base}/api/export/payroll?month=2030-04`, { headers: { 'x-dev-user': MC_A } })).status).toBe(403);
     const res = await fetch(`${base}/api/export/payroll?month=2030-04`);
     expect(res.headers.get('content-type')).toContain('spreadsheetml');
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(Buffer.from(await res.arrayBuffer()) as unknown as ExcelJS.Buffer);
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance', 'Missing results', 'Cancelled & leave', 'Urgent leave', 'Live performance']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Sessions', 'Freelance', 'Missing results', 'Cancelled & leave', 'Urgent leave', 'Live performance by room', 'Live performance by staff']);
 
-    // Live performance: month vs accumulated (history + app), and each one's best live.
-    const pf = wb.getWorksheet('Live performance')!;
-    const perfRow = (name: string, role: string) => {
-      const rows = pf.getRows(1, pf.rowCount)!.filter((r) => r.getCell(1).value === name && r.getCell(2).value === role);
-      expect(rows).toHaveLength(1);
-      return rows[0].values as unknown[];
-    };
-    expect(perfRow('MC A', 'MC').slice(1, 16)).toEqual([
-      'MC A', 'MC', 1, 2, 9000, 4500, 2, 4, 13000, 3250, 9000, '2030-04-02', '10:00 - 12:00', 'TTS 1', '2030-03-01',
+    // Live performance of the month, by room and by staff, day by day (blank = no result yet).
+    const rowsOf = (sheet: string) => wb.getWorksheet(sheet)!.getSheetValues().slice(2).map((r) => (r as unknown[]).slice(1));
+    expect(rowsOf('Live performance by room')).toEqual([
+      ['2030-04-02', 'TTS 1', 9000, 1],
+      ['2030-04-03', 'TTS 2', undefined, 1],
     ]);
-    expect(perfRow('Old MC', 'MC').slice(9, 12)).toEqual([20000, 6666.67, 20000]);
-    expect(perfRow('TTS 1', '').slice(3, 15)).toEqual([1, 2, 9000, 4500, 3, 7, 33000, 4714.29, 20000, '2029-12-01', '20:00 - 23:00', 'TTS 1']);
+    expect(rowsOf('Live performance by staff')).toEqual([
+      ['2030-04-02', 'TTS 1', 'MC A', 'mc', 9000, 1],
+      ['2030-04-02', 'TTS 1', 'FL-Kaew', 'pd', 9000, 1],
+      ['2030-04-03', 'TTS 2', 'P-Arm', 'mc', undefined, 1],
+      ['2030-04-03', 'TTS 2', 'FL-Kaew', 'pd', undefined, 1],
+    ]);
 
     const names = (sheet: string, col: string) =>
       wb.getWorksheet(sheet)!.getColumn(col).values.slice(2).filter((v) => typeof v === 'string');
